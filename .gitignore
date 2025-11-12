@@ -48,3 +48,6 @@ Thumbs.db
 # Package manager
 .yarn
 .npm
+
+# Misc
+ENHANCEMENT.md

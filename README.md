@@ -1,0 +1,925 @@
+# Linera React Client
+
+A React client library for Linera blockchain with hooks, providers, and wallet management.
+
+## Installation
+
+```bash
+npm install linera-react-client
+# or
+yarn add linera-react-client
+# or
+pnpm add linera-react-client
+```
+
+### Linera Assets Setup
+
+The library requires Linera WASM and worker files to be served as static assets from your `public` directory.
+
+#### Automatic Setup (Recommended)
+
+The postinstall script **automatically** copies required files after installation:
+
+```bash
+npm install linera-react-client  # Files copied automatically ✓
+```
+
+The script:
+- ✅ Detects your framework (Next.js, Vite, CRA)
+- ✅ Copies files to the correct `public` directory
+- ✅ Skips in CI environments
+- ✅ Can be configured via `package.json`
+
+#### Manual Copy (If Needed)
+
+If automatic copy fails or you're in CI:
+
+```bash
+npm run linera:copy
+```
+
+Or copy files manually:
+```bash
+# From: node_modules/@linera/client/dist
+# To: public/linera/
+```
+
+#### Configuration Options
+
+Skip postinstall or customize directories in your `package.json`:
+
+```json
+{
+  "lineraConfig": {
+    "skipPostinstall": true,        // Skip automatic copy
+    "publicDir": "public",           // Custom public directory
+    "targetDir": "linera"            // Custom target subdirectory
+  }
+}
+```
+
+#### Troubleshooting
+
+**Files not copied?**
+- Run manually: `npm run linera:copy`
+- Check permissions on `public` directory
+- Ensure `@linera/client` is installed
+
+**CI/CD environments:**
+- Postinstall skips in CI by default
+- Run manually in build step: `npm run linera:copy`
+
+## Quick Start
+
+### 1. Configure Your Framework
+
+#### Next.js
+
+```typescript
+// next.config.ts
+import { withLinera } from 'linera-react-client/config/nextjs';
+
+export default withLinera({
+  // Your Next.js config
+});
+```
+
+#### Vite
+
+**Option 1: Plugin (Recommended)**
+
+```typescript
+// vite.config.ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { lineraPlugin } from 'linera-react-client/config/vite';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    lineraPlugin(),
+  ],
+});
+```
+
+**Option 2: Complete Config Helper**
+
+```typescript
+// vite.config.ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { withLinera } from 'linera-react-client/config/vite';
+
+export default defineConfig(
+  withLinera({
+    plugins: [react()],
+    // Your other Vite config
+  })
+);
+```
+
+#### Create React App (with CRACO)
+
+```javascript
+// craco.config.js
+const { createLineraConfig } = require('linera-react-client/config/craco');
+
+module.exports = createLineraConfig();
+```
+
+Update your `package.json` scripts:
+```json
+{
+  "scripts": {
+    "start": "craco start",
+    "build": "craco build",
+    "test": "craco test"
+  }
+}
+```
+
+#### Generic Webpack
+
+```javascript
+// webpack.config.js
+const { withLinera } = require('linera-react-client/config/webpack');
+
+module.exports = withLinera({
+  // Your webpack config
+  entry: './src/index.js',
+  // ...
+});
+```
+
+### 2. Wrap your app with LineraProvider
+
+**Recommended: Use Constant Address (Most Efficient)**
+
+```typescript
+// app/layout.tsx or _app.tsx
+import { LineraProvider } from 'linera-react-client';
+
+export default function RootLayout({ children }) {
+  return (
+    <html>
+      <body>
+        <LineraProvider
+          faucetUrl="http://localhost:8080"
+          readOnlyWallet={{
+            constantAddress: "0x0000000000000000000000000000000000000000"
+          }}
+        >
+          {children}
+        </LineraProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+**Alternative Options:**
+
+```typescript
+// Option 1: Constant Address (Recommended - Most Efficient)
+// - Zero overhead (no wallet creation)
+// - Same chain for all users
+// - Predictable and efficient
+<LineraProvider
+  faucetUrl="http://localhost:8080"
+  readOnlyWallet={{
+    constantAddress: "0x0000000000000000000000000000000000000000"
+  }}
+>
+  {children}
+</LineraProvider>
+
+// Option 2: Persisted in localStorage
+// - Wallet survives page reloads
+// - User keeps same read-only wallet
+<LineraProvider
+  faucetUrl="http://localhost:8080"
+  readOnlyWallet={{
+    storage: 'localStorage'
+  }}
+>
+  {children}
+</LineraProvider>
+
+// Option 3: Session Storage
+// - Wallet survives during browser session
+// - Cleared when browser is closed
+<LineraProvider
+  faucetUrl="http://localhost:8080"
+  readOnlyWallet={{
+    storage: 'sessionStorage'
+  }}
+>
+  {children}
+</LineraProvider>
+
+// Option 4: Ephemeral (Default)
+// - New wallet on every page reload
+// - Maximum privacy, no persistence
+<LineraProvider faucetUrl="http://localhost:8080">
+  {children}
+</LineraProvider>
+```
+
+### 3. Use the hooks in your components
+
+```typescript
+// components/WalletButton.tsx
+'use client';
+
+import { useWalletConnection, useLineraClient } from 'linera-react-client';
+
+export function WalletButton() {
+  const { isConnected, connect, disconnect, address } = useWalletConnection();
+  const { chainId } = useLineraClient();
+
+  if (isConnected) {
+    return (
+      <div>
+        <p>Connected: {address?.slice(0, 6)}...{address?.slice(-4)}</p>
+        <p>Chain: {chainId}</p>
+        <button onClick={disconnect}>Disconnect</button>
+      </div>
+    );
+  }
+
+  return <button onClick={connect}>Connect Wallet</button>;
+}
+```
+
+### 4. Query and mutate applications
+
+```typescript
+'use client';
+
+import { useApplication } from 'linera-react-client';
+import { useEffect, useState } from 'react';
+
+export function AuctionList() {
+  const { query, mutate, isReady, canWrite } = useApplication(APP_ID);
+  const [auctions, setAuctions] = useState([]);
+
+  useEffect(() => {
+    if (!isReady) return;
+
+    const fetchAuctions = async () => {
+      const result = await query<{ auctions: Auction[] }>(
+        '{ "query": "query { auctions }" }'
+      );
+      setAuctions(result.auctions);
+    };
+
+    fetchAuctions();
+  }, [isReady, query]);
+
+  const handleBid = async (auctionId: string, amount: number) => {
+    if (!canWrite) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    await mutate(`{
+      "query": "mutation { placeBid(auctionId: \\"${auctionId}\\", amount: ${amount}) }"
+    }`);
+  };
+
+  return (
+    <div>
+      {auctions.map(auction => (
+        <AuctionCard key={auction.id} auction={auction} onBid={handleBid} />
+      ))}
+    </div>
+  );
+}
+```
+
+## Cross-Chain Querying
+
+The SDK supports querying any chain directly via HTTP without needing to claim or open it first.
+
+### Query Any Chain by ID
+
+```typescript
+'use client';
+
+import { useApplication } from 'linera-react-client';
+import { useState } from 'react';
+
+export function CrossChainAuction() {
+  const app = useApplication(APP_ID);
+  const [auctionData, setAuctionData] = useState(null);
+
+  const fetchFromCreatorChain = async () => {
+    // Query a specific chain directly
+    const data = await app.queryChain(
+      'creator-chain-id-here',
+      `query {
+        auctionInfo {
+          currentPrice
+          quantityRemaining
+          status
+        }
+      }`
+    );
+    setAuctionData(data);
+  };
+
+  return (
+    <div>
+      <button onClick={fetchFromCreatorChain}>
+        Fetch from Creator Chain
+      </button>
+      {auctionData && (
+        <div>
+          <p>Price: {auctionData.auctionInfo.currentPrice}</p>
+          <p>Available: {auctionData.auctionInfo.quantityRemaining}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### Static Query (Without Hook)
+
+For queries outside React components or before client initialization:
+
+```typescript
+import { ApplicationClientImpl } from 'linera-react-client';
+
+// Query any chain statically
+const data = await ApplicationClientImpl.queryChainStatic(
+  'http://localhost:8080',  // faucet URL
+  'chain-id-to-query',       // target chain ID
+  'your-app-id',             // application ID
+  `query { auctionInfo { currentPrice } }`
+);
+```
+
+### Use Cases
+
+**1. Query Creator Chain for Live Data**
+```typescript
+// Find where the data lives and query it directly
+const creatorData = await app.queryChain(creatorChainId, query);
+```
+
+**2. Query Multiple Chains**
+```typescript
+// Query different chains in parallel
+const [chain1Data, chain2Data] = await Promise.all([
+  app.queryChain('chain-1', query),
+  app.queryChain('chain-2', query),
+]);
+```
+
+**3. Cached Data + Live Fallback**
+```typescript
+// Try local cache first, fallback to creator chain
+try {
+  const cached = await app.query(cacheQuery);
+  return cached;
+} catch {
+  const live = await app.queryChain(creatorChainId, liveQuery);
+  return live;
+}
+```
+
+## Logging Configuration
+
+The SDK includes a configurable logging system that helps with debugging and monitoring.
+
+### Basic Usage
+
+```typescript
+import { LineraProvider, LogLevel } from 'linera-react-client';
+
+// Disable logging in production
+<LineraProvider
+  faucetUrl="http://localhost:8080"
+  logging={process.env.NODE_ENV !== 'production'}
+>
+  {children}
+</LineraProvider>
+
+// Custom log level
+<LineraProvider
+  faucetUrl="http://localhost:8080"
+  logging={{
+    enabled: true,
+    level: LogLevel.INFO,  // NONE, ERROR, WARN, INFO, DEBUG
+    prefix: '[MyApp]',
+  }}
+>
+  {children}
+</LineraProvider>
+```
+
+### Using the Logger in Your Code
+
+```typescript
+import { logger } from 'linera-react-client';
+
+// Simple usage
+logger.info('User action completed');
+logger.error('Failed to fetch data', error);
+logger.debug('State updated', state);
+
+// With type safety
+logger.info('Transaction sent', { txId: '0x123', amount: 100 });
+```
+
+### Custom Logger Integration
+
+Integrate with services like Sentry, LogRocket, etc.:
+
+```typescript
+import * as Sentry from '@sentry/react';
+
+<LineraProvider
+  faucetUrl="http://localhost:8080"
+  logging={{
+    enabled: true,
+    level: LogLevel.ERROR,
+    customLogger: {
+      debug: console.debug,
+      info: console.info,
+      warn: console.warn,
+      error: (msg, ...args) => {
+        console.error(msg, ...args);
+        Sentry.captureException(new Error(msg));
+      },
+    },
+  }}
+>
+  {children}
+</LineraProvider>
+```
+
+## Read-Only Wallet Configuration
+
+The `readOnlyWallet` configuration controls how temporary wallets are created for guest/read-only mode (before users connect MetaMask). This is an important performance optimization.
+
+### Why Constant Address is Recommended
+
+In read-only mode, users only need to **query** applications, not perform write operations. The wallet is only used to claim a chain from the faucet for reading data.
+
+**Problem with Random Wallets:**
+- Every user creates a new random wallet
+- Faucet creates a new chain for each wallet
+- Wasted resources and slower initialization
+
+**Solution with Constant Address:**
+- All users share the same read-only wallet address
+- Faucet can reuse the same chain for all users
+- Zero overhead, instant initialization
+- Same functionality for read-only operations
+
+### Configuration Options
+
+| Option | Use Case | Persistence | Performance |
+|--------|----------|-------------|-------------|
+| **Constant Address** | Production read-only (recommended) | N/A (same for all) | ⚡ Fastest |
+| **localStorage** | User wants consistent wallet | Across sessions | 🚀 Fast |
+| **sessionStorage** | Privacy + session persistence | Current session | 🚀 Fast |
+| **Ephemeral (none)** | Maximum privacy | None | ⏱️ Slower |
+
+### Example Configuration
+
+```typescript
+interface LineraProviderProps {
+  faucetUrl: string;
+  network?: 'mainnet' | 'testnet' | 'local';
+  autoConnect?: boolean;
+  skipProcessInbox?: boolean;
+  readOnlyWallet?: {
+    // Use constant address (recommended)
+    constantAddress?: string;
+    // OR use storage (only if constantAddress not provided)
+    storage?: 'localStorage' | 'sessionStorage' | 'none';
+    storageKey?: string;
+  };
+  logging?: boolean | {
+    enabled?: boolean;
+    level?: LogLevel;
+    prefix?: string;
+    customLogger?: CustomLogger;
+  };
+}
+```
+
+## API Reference
+
+### Hooks
+
+#### `useLineraClient()`
+
+Main hook for accessing Linera client functionality.
+
+```typescript
+const {
+  client,          // Raw Linera client instance
+  wallet,          // Wallet instance
+  isInitialized,   // Is client initialized
+  isReadOnly,      // Is in read-only mode (guest)
+  isConnected,     // Is wallet connected
+  walletAddress,   // Connected wallet address
+  chainId,         // Claimed chain ID
+  canWrite,        // Can perform write operations
+  error,           // Any error that occurred
+  getApplication,  // Get application client
+} = useLineraClient();
+```
+
+#### `useWalletConnection()`
+
+Hook for managing wallet connections.
+
+```typescript
+const {
+  isMetaMaskInstalled, // Is MetaMask installed
+  isConnected,         // Is wallet connected
+  isConnecting,        // Is connecting
+  address,             // Connected wallet address
+  chainId,             // Claimed chain ID
+  error,               // Connection error
+  connect,             // Connect MetaMask wallet
+  disconnect,          // Disconnect wallet
+} = useWalletConnection();
+```
+
+#### `useApplication(appId: string)`
+
+Hook for accessing a specific Linera application.
+
+```typescript
+const {
+  app,         // Application client
+  isReady,     // Is client ready
+  isLoading,   // Is loading application
+  canWrite,    // Can perform write operations
+  query,       // Execute a query
+  mutate,      // Execute a mutation
+  queryChain,  // Query any chain by ID (cross-chain)
+} = useApplication(APP_ID);
+```
+
+**Application Client Methods:**
+
+```typescript
+// Query current chain
+const data = await app.query<T>('query { ... }');
+
+// Mutate (requires wallet connection)
+const result = await app.mutate<T>('mutation { ... }');
+
+// Query any chain by ID (NEW - cross-chain querying)
+const crossChainData = await app.queryChain<T>(
+  'target-chain-id',
+  'query { ... }'
+);
+```
+
+**Static Method (for use outside React components):**
+
+```typescript
+import { ApplicationClientImpl } from 'linera-react-client';
+
+// Query any chain without hooks
+const data = await ApplicationClientImpl.queryChainStatic<T>(
+  'http://localhost:8080',  // faucet URL
+  'chain-id',                // target chain ID
+  'app-id',                  // application ID
+  'query { ... }'            // GraphQL query
+);
+```
+
+### Components
+
+#### `LineraProvider`
+
+Provider component that initializes the Linera client.
+
+```typescript
+interface LineraProviderProps {
+  children: React.ReactNode;
+  faucetUrl: string;
+  network?: 'mainnet' | 'testnet' | 'local';
+  autoConnect?: boolean;
+  skipProcessInbox?: boolean;
+  readOnlyWallet?: ReadOnlyWalletConfig;
+  logging?: boolean | LoggerConfig;
+}
+```
+
+### Configuration Helpers
+
+#### Next.js: `withLinera(nextConfig, lineraConfig)`
+
+Next.js configuration wrapper that adds required headers and external packages.
+
+```typescript
+import { withLinera } from 'linera-react-client/config/nextjs';
+
+export default withLinera(
+  {
+    // Your Next.js config
+  },
+  {
+    enableHeaders: true,      // Enable COOP/COEP headers (default: true)
+    customHeaders: [],        // Additional custom headers
+  }
+);
+```
+
+**What it does:**
+- ✅ Adds `@linera/client` to `serverExternalPackages`
+- ✅ Sets required COOP/COEP headers for SharedArrayBuffer
+- ✅ Allows custom headers configuration
+
+#### Vite: `lineraPlugin(options)` & `withLinera(viteConfig, lineraConfig)`
+
+**Option 1: Plugin (Recommended)**
+
+```typescript
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { lineraPlugin } from 'linera-react-client/config/vite';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    lineraPlugin({
+      enableHeaders: true,     // Enable COOP/COEP headers (default: true)
+      customHeaders: {},       // Additional headers
+    }),
+  ],
+});
+```
+
+**Option 2: Complete Config Helper**
+
+```typescript
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { withLinera } from 'linera-react-client/config/vite';
+
+export default defineConfig(
+  withLinera({
+    plugins: [react()],
+    // Your other Vite config
+  }, {
+    enableHeaders: true,
+    customHeaders: {},
+  })
+);
+```
+
+**What it does:**
+- ✅ Sets required COOP/COEP headers (dev & preview servers)
+- ✅ Marks `@linera/client` as external in build
+- ✅ Excludes `@linera/client` from optimization
+- ✅ Enables top-level-await support
+
+**Configuration Options:**
+
+```typescript
+interface LineraViteConfig {
+  enableHeaders?: boolean;              // Enable COOP/COEP headers (default: true)
+  customHeaders?: Record<string, string>; // Additional headers
+}
+```
+
+#### Create React App (CRACO): `createLineraConfig()`
+
+For Create React App projects using CRACO for custom configuration.
+
+```javascript
+// craco.config.js
+const { createLineraConfig } = require('linera-react-client/config/craco');
+
+module.exports = createLineraConfig();
+```
+
+**With custom configuration:**
+
+```javascript
+// craco.config.js
+const { createLineraConfig } = require('linera-react-client/config/craco');
+
+const lineraConfig = createLineraConfig();
+
+module.exports = {
+  ...lineraConfig,
+  // Your other CRACO config
+  webpack: {
+    ...lineraConfig.webpack,
+    // Additional webpack config
+  }
+};
+```
+
+**What it does:**
+- ✅ Configures webpack dev server with COOP/COEP headers
+- ✅ Enables SharedArrayBuffer support for Linera WASM
+- ✅ Compatible with existing CRACO configurations
+
+**Installation:**
+```bash
+npm install @craco/craco --save-dev
+```
+
+Update `package.json` scripts:
+```json
+{
+  "scripts": {
+    "start": "craco start",
+    "build": "craco build",
+    "test": "craco test"
+  }
+}
+```
+
+#### Generic Webpack: `withLinera(webpackConfig, config)`
+
+For projects using plain Webpack or custom build setups.
+
+```javascript
+// webpack.config.js
+const { withLinera } = require('linera-react-client/config/webpack');
+
+module.exports = withLinera({
+  entry: './src/index.js',
+  // Your other webpack config
+});
+```
+
+**With custom headers:**
+
+```javascript
+// webpack.config.js
+const { withLinera } = require('linera-react-client/config/webpack');
+
+module.exports = withLinera(
+  {
+    entry: './src/index.js',
+    // Your webpack config
+  },
+  {
+    enableHeaders: true,
+    customHeaders: {
+      'X-Custom-Header': 'value'
+    }
+  }
+);
+```
+
+**What it does:**
+- ✅ Adds COOP/COEP headers to webpack dev server
+- ✅ Supports custom header configuration
+- ✅ Works with any webpack-based setup
+
+**Configuration Options:**
+
+```typescript
+interface LineraWebpackConfig {
+  enableHeaders?: boolean;              // Enable COOP/COEP headers (default: true)
+  customHeaders?: Record<string, string>; // Additional headers
+}
+```
+
+## Local Development
+
+### Testing the SDK locally
+
+1. **Build the SDK:**
+```bash
+cd linera-react-client
+npm install
+npm run build
+```
+
+2. **Link it locally (Option A):**
+```bash
+# In the SDK directory
+npm link
+
+# In your project directory
+cd ../your-project
+npm link linera-react-client
+```
+
+3. **Or use file path (Option B):**
+```json
+// In your project's package.json
+{
+  "dependencies": {
+    "linera-react-client": "file:../linera-react-client"
+  }
+}
+```
+
+4. **Watch for changes during development:**
+```bash
+cd linera-react-client
+npm run dev
+```
+
+### Available Scripts
+
+- `npm run build` - Build the library (CJS + ESM + Types)
+- `npm run dev` - Watch mode for development
+- `npm run type-check` - Type check without building
+- `npm run clean` - Remove build output
+
+## Features
+
+- ✅ React hooks for Linera client
+- ✅ Wallet connection management (MetaMask)
+- ✅ Read-only mode with temporary wallets
+- ✅ Application query and mutation
+- ✅ **Cross-chain querying** - Query any chain by ID via HTTP
+- ✅ Full TypeScript support with type definitions
+- ✅ Framework configuration helpers:
+  - ✅ Next.js
+  - ✅ Vite
+  - ✅ Create React App (CRACO)
+  - ✅ Generic Webpack
+- ✅ **Automatic asset management** (postinstall script)
+- ✅ Configurable logging system
+- ✅ ESM and CJS builds
+- ✅ Tree-shakeable exports
+- ✅ Small bundle size (~30KB)
+
+## Requirements
+
+- **React** >= 18.0.0
+- **React DOM** >= 18.0.0
+- **Next.js** >= 13.0.0 (if using Next.js)
+- **MetaMask** browser extension (for wallet features)
+
+## Project Structure
+
+```
+linera-react-client/
+├── src/
+│   ├── hooks/              # React hooks
+│   │   ├── useLineraClient.ts
+│   │   ├── useWalletConnection.ts
+│   │   └── useLineraApplication.ts
+│   ├── providers/          # React providers
+│   │   └── LineraProvider.tsx
+│   ├── lib/
+│   │   ├── linera/         # Core Linera client logic
+│   │   │   ├── client-manager.ts
+│   │   │   ├── application-client.ts
+│   │   │   └── temporary-signer.ts
+│   │   └── signers/        # Signer implementations
+│   ├── config/             # Framework configuration helpers
+│   │   ├── nextjs.ts       # Next.js config
+│   │   ├── vite.ts         # Vite config
+│   │   ├── craco.ts        # Create React App (CRACO)
+│   │   └── webpack.ts      # Generic Webpack
+│   ├── utils/              # Utilities
+│   │   └── logger.ts       # Configurable logger
+│   └── index.ts            # Main exports
+├── scripts/
+│   └── postinstall.js      # Asset copy script
+├── dist/                   # Build output
+├── package.json
+├── tsconfig.json
+└── tsup.config.ts
+```
+
+## Examples
+
+See the [examples](./examples) directory for complete working examples:
+- Next.js App Router
+- Next.js Pages Router
+- Vite + React
+- Create React App (with CRACO)
+- Generic Webpack Setup
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT
+
+## Author
+
+**Wisdom Abioye**
+
+## Repository
+
+https://github.com/wisdomabioye/linera-react-client
+
+## Support
+
+For issues, questions, or feature requests, please open an issue on GitHub.

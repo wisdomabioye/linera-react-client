@@ -1,0 +1,130 @@
+{
+  "name": "linera-react-client",
+  "version": "0.1.0",
+  "description": "React client library for Linera blockchain with hooks, providers, and wallet management",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./config/nextjs": {
+      "types": "./dist/config/nextjs.d.ts",
+      "import": "./dist/config/nextjs.mjs",
+      "require": "./dist/config/nextjs.js"
+    },
+    "./config/vite": {
+      "types": "./dist/config/vite.d.ts",
+      "import": "./dist/config/vite.mjs",
+      "require": "./dist/config/vite.js"
+    },
+    "./config/craco": {
+      "types": "./dist/config/craco.d.ts",
+      "import": "./dist/config/craco.mjs",
+      "require": "./dist/config/craco.js"
+    },
+    "./config/webpack": {
+      "types": "./dist/config/webpack.d.ts",
+      "import": "./dist/config/webpack.mjs",
+      "require": "./dist/config/webpack.js"
+    }
+  },
+  "files": [
+    "dist",
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build",
+    "postinstall": "node scripts/postinstall.js",
+    "linera:copy": "node scripts/postinstall.js",
+    "prepare": "husky",
+    "release": "semantic-release"
+  },
+  "keywords": [
+    "linera",
+    "blockchain",
+    "react",
+    "web3",
+    "wallet",
+    "metamask",
+    "dapp",
+    "hooks",
+    "client"
+  ],
+  "author": "Wisdom Abioye",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wisdomabioye/linera-react-client.git"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "dependencies": {
+    "@linera/client": "0.15.5",
+    "@metamask/providers": "^22.1.1",
+    "ethers": "^6.15.0"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.1.0",
+    "@commitlint/config-conventional": "^20.0.0",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^12.0.2",
+    "@semantic-release/npm": "^13.1.1",
+    "@types/node": "^20.10.6",
+    "@types/react": "^18.2.46",
+    "@types/react-dom": "^18.2.18",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.6",
+    "next": "^16.0.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "semantic-release": "^25.0.2",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vite": "^7.2.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "npm run type-check"
+    ]
+  },
+  "release": {
+    "branches": [
+      "main"
+    ],
+    "plugins": [
+      "@semantic-release/commit-analyzer",
+      "@semantic-release/release-notes-generator",
+      "@semantic-release/changelog",
+      [
+        "@semantic-release/npm",
+        {
+          "npmPublish": true
+        }
+      ],
+      [
+        "@semantic-release/git",
+        {
+          "assets": [
+            "package.json",
+            "CHANGELOG.md"
+          ],
+          "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+        }
+      ],
+      "@semantic-release/github"
+    ]
+  }
+}

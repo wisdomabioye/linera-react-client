@@ -321,9 +321,20 @@ export class LineraClientManager implements ILineraClientManager {
   /**
    * Load Linera module
    */
-  private async loadLinera() {
-    const { loadLineraModule } = await import('./linera-loader');
-    return await loadLineraModule();
+  private async loadLinera(): Promise<LineraModule> {
+    // Directly load the Linera WebAssembly module from the public directory
+    // Using dynamic import with URL to work with all bundlers
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const moduleUrl = `${origin}/linera/linera_web.js`;
+
+    logger.info('Loading Linera module from:', moduleUrl);
+
+    // Load the module using dynamic import with URL
+    const lineraModule = await import(/* @vite-ignore */ /* webpackIgnore: true */ moduleUrl) as LineraModule;
+
+    logger.info('Linera module loaded:', lineraModule);
+
+    return lineraModule;
   }
 
   /**

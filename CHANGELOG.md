@@ -1,3 +1,16 @@
+# 1.0.0 (2025-11-13)
+
+
+### Bug Fixes
+
+* update Node.js version to 22.x in release workflow ([438b498](https://github.com/wisdomabioye/linera-react-client/commit/438b498af1351f2f5d8ecd44be530f29a209d035))
+* use NPM_TOKEN environment variable for semantic-release ([88a4435](https://github.com/wisdomabioye/linera-react-client/commit/88a4435f4107fb7bc33955f4bda29d601c6b2868))
+
+
+### Features
+
+* first commit ([4fa483d](https://github.com/wisdomabioye/linera-react-client/commit/4fa483dbcb6c4cf070f49ff065fd1fa91a54398f))
+
 # Changelog
 
 All notable changes to this project will be documented in this file.

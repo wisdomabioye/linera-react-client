@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/wisdomabioye/linera-react-client/compare/v1.0.1...v1.0.2) (2025-11-13)
+
+
+### Bug Fixes
+
+* improve Linera module loading with dynamic import from public directory ([0be5ba3](https://github.com/wisdomabioye/linera-react-client/commit/0be5ba36d231866e50ebfb9b2f79b3d34191e43a))
+
 ## [1.0.1](https://github.com/wisdomabioye/linera-react-client/compare/v1.0.0...v1.0.1) (2025-11-13)
 
 

@@ -33,19 +33,23 @@
     }
   },
   "files": [
-    "dist",
-    "scripts",
+    "dist/**/*.js",
+    "dist/**/*.mjs",
+    "dist/**/*.d.ts",
+    "!dist/**/*.d.mts",
+    "scripts/postinstall.min.js",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsup",
+    "build:scripts": "npx terser scripts/postinstall.js -o scripts/postinstall.min.js -c -m --comments false",
     "dev": "tsup --watch",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build",
-    "postinstall": "node scripts/postinstall.js",
-    "linera:copy": "node scripts/postinstall.js",
+    "prepublishOnly": "npm run build:scripts && npm run build",
+    "postinstall": "node scripts/postinstall.min.js",
+    "linera:copy": "node scripts/postinstall.min.js",
     "prepare": "husky",
     "release": "semantic-release"
   },
@@ -94,11 +98,6 @@
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
     "vite": "^7.2.2"
-  },
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "npm run type-check"
-    ]
   },
   "release": {
     "branches": [

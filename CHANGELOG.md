@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/wisdomabioye/linera-react-client/compare/v1.0.0...v1.0.1) (2025-11-13)
+
+
+### Bug Fixes
+
+* reduce package size by 70% ([caabb4e](https://github.com/wisdomabioye/linera-react-client/commit/caabb4e70e616dd33a95c754ee5450776c84dce2))
+
 # 1.0.0 (2025-11-13)
 
 

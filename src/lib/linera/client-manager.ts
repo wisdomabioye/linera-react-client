@@ -323,14 +323,16 @@ export class LineraClientManager implements ILineraClientManager {
    */
   private async loadLinera(): Promise<LineraModule> {
     // Directly load the Linera WebAssembly module from the public directory
-    // Using dynamic import with URL to work with all bundlers
+    // Using a function wrapper to bypass Turbopack's static analysis
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const moduleUrl = `${origin}/linera/linera_web.js`;
 
     logger.info('Loading Linera module from:', moduleUrl);
 
-    // Load the module using dynamic import with URL
-    const lineraModule = await import(/* @vite-ignore */ /* webpackIgnore: true */ moduleUrl) as LineraModule;
+    // Use Function constructor to create dynamic import that Turbopack can't analyze
+    // This bypasses static analysis while still loading the module at runtime
+    const loadModule = new Function('url', 'return import(url)');
+    const lineraModule = await loadModule(moduleUrl) as LineraModule;
 
     logger.info('Linera module loaded:', lineraModule);
 

@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Linera React Client
  *
@@ -7,10 +9,10 @@
 // React Hooks
 export {
   useLineraClient,
-  useApplication,
+  useLineraApplication,
   useWalletConnection,
   type UseLineraClientReturn,
-  type UseApplicationReturn,
+  type UseLineraApplicationReturn,
   type UseWalletConnectionReturn,
 } from './hooks';
 

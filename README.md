@@ -12,6 +12,36 @@ yarn add linera-react-client
 pnpm add linera-react-client
 ```
 
+### Windows Installation
+
+**Known Issue**: On Windows, installation may fail due to a compatibility issue in the `@linera/client` dependency (not in this package).
+
+**Error you might see:**
+```
+npm error 'true' is not recognized as an internal or external command
+```
+
+**Workaround**: Use the `--ignore-scripts` flag:
+
+```bash
+npm install linera-react-client --ignore-scripts
+# or
+yarn add linera-react-client --ignore-scripts
+# or
+pnpm add linera-react-client --ignore-scripts
+```
+
+> **Note**: Using `--ignore-scripts` skips the postinstall script. You'll need to manually copy Linera assets (see next section).
+
+After installation, manually run:
+```bash
+npm run linera:copy
+# or
+yarn linera:copy
+# or
+pnpm linera:copy
+```
+
 ### Linera Assets Setup
 
 The library requires Linera WASM and worker files to be served as static assets from your `public` directory.

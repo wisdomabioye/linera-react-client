@@ -46,11 +46,31 @@ function isCI() {
 }
 
 /**
+ * Find the root project directory (consuming project, not this package)
+ */
+function findProjectRoot() {
+  let currentDir = process.cwd();
+
+  // If we're inside node_modules, traverse up to find the project root
+  if (currentDir.includes('node_modules')) {
+    const parts = currentDir.split(path.sep);
+    const nodeModulesIndex = parts.lastIndexOf('node_modules');
+
+    if (nodeModulesIndex > 0) {
+      // Go up to the directory containing node_modules
+      currentDir = parts.slice(0, nodeModulesIndex).join(path.sep);
+    }
+  }
+
+  return currentDir;
+}
+
+/**
  * Detect the framework being used
  */
-function detectFramework() {
+function detectFramework(projectRoot) {
   try {
-    const packageJsonPath = path.join(process.cwd(), 'package.json');
+    const packageJsonPath = path.join(projectRoot, 'package.json');
 
     if (!fs.existsSync(packageJsonPath)) {
       return 'unknown';
@@ -89,9 +109,9 @@ function getPublicDir(framework) {
 /**
  * Check if user has configured custom settings in package.json
  */
-function getUserConfig() {
+function getUserConfig(projectRoot) {
   try {
-    const packageJsonPath = path.join(process.cwd(), 'package.json');
+    const packageJsonPath = path.join(projectRoot, 'package.json');
 
     if (!fs.existsSync(packageJsonPath)) {
       return {};
@@ -147,40 +167,54 @@ function main() {
 
   // Skip in CI environments by default
   if (isCI()) {
-    log('˜ Skipping in CI environment', 'yellow');
+    log('ï¿½ Skipping in CI environment', 'yellow');
     log('  Run manually if needed: node node_modules/@linera/react-sdk/scripts/postinstall.js', 'gray');
     return;
   }
 
+  // Find the project root (not node_modules)
+  const projectRoot = findProjectRoot();
+  log(`Project root: ${projectRoot}`, 'gray');
+
   // Get user configuration
-  const userConfig = getUserConfig();
+  const userConfig = getUserConfig(projectRoot);
 
   // Check if user wants to skip postinstall
   if (userConfig.skipPostinstall === true) {
-    log('˜ Skipped (skipPostinstall = true in package.json)', 'yellow');
+    log('ï¿½ Skipped (skipPostinstall = true in package.json)', 'yellow');
     log('  To copy files manually, run: node node_modules/@linera/react-sdk/scripts/postinstall.js', 'gray');
     return;
   }
 
   // Detect framework
-  const framework = detectFramework();
+  const framework = detectFramework(projectRoot);
   log(`Framework detected: ${framework}`, 'gray');
 
   // Determine directories
   const publicDir = userConfig.publicDir || getPublicDir(framework);
   const targetSubDir = userConfig.targetDir || 'linera';
 
-  const sourceDir = path.join(__dirname, '..', 'node_modules', '@linera', 'client', 'dist');
-  const targetDir = path.join(process.cwd(), publicDir, targetSubDir);
+  // Try multiple possible locations for @linera/client
+  const possibleSourceDirs = [
+    // In consuming project's node_modules (when installed as package)
+    path.join(projectRoot, 'node_modules', '@linera', 'client', 'dist'),
+    // In sibling node_modules (when using npm workspaces or pnpm)
+    path.join(__dirname, '..', '..', '@linera', 'client', 'dist'),
+    // In parent's node_modules (for monorepos)
+    path.join(__dirname, '..', '..', '..', '@linera', 'client', 'dist'),
+  ];
 
-  log(`Source: ${path.relative(process.cwd(), sourceDir)}`, 'gray');
-  log(`Target: ${path.relative(process.cwd(), targetDir)}`, 'gray');
+  const sourceDir = possibleSourceDirs.find(dir => fs.existsSync(dir)) || possibleSourceDirs[0];
+  const targetDir = path.join(projectRoot, publicDir, targetSubDir);
+
+  log(`Source: ${path.relative(projectRoot, sourceDir)}`, 'gray');
+  log(`Target: ${path.relative(projectRoot, targetDir)}`, 'gray');
   log('', 'reset');
 
   try {
     // Check if source exists
     if (!fs.existsSync(sourceDir)) {
-      log('  Source files not found', 'yellow');
+      log('ï¿½ Source files not found', 'yellow');
       log('  This is expected if @linera/client is not yet installed', 'gray');
       log('  Files will be copied after @linera/client is installed', 'gray');
       return;
@@ -190,7 +224,7 @@ function main() {
     log('Copying Linera assets...', 'cyan');
     const fileCount = copyDir(sourceDir, targetDir);
 
-    log(` Successfully copied ${fileCount} files to ${path.relative(process.cwd(), targetDir)}`, 'green');
+    log(` Successfully copied ${fileCount} files to ${path.relative(projectRoot, targetDir)}`, 'green');
     log('', 'reset');
     log('Next steps:', 'cyan');
     log('  1. Ensure your bundler serves files from the public directory', 'gray');

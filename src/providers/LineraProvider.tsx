@@ -69,6 +69,37 @@ export interface LineraProviderProps {
    * @default true in development, false in production
    */
   logging?: boolean | LoggerConfig;
+
+  /**
+   * Custom fallback UI shown during initialization
+   * If not provided, shows default loading message
+   *
+   * @example
+   * fallback={<AppSkeleton />}
+   */
+  fallback?: React.ReactNode;
+
+  /**
+   * Custom error UI shown when initialization fails
+   * If not provided, shows default error with reload button
+   *
+   * @example
+   * errorFallback={(error) => <ErrorBoundary error={error} />}
+   */
+  errorFallback?: (error: Error) => React.ReactNode;
+
+  /**
+   * Immediate mode - render children immediately without waiting for initialization
+   * WARNING: Components must check isInitialized before using Linera to avoid WASM errors
+   *
+   * @default false
+   *
+   * @example
+   * <LineraProvider faucetUrl="..." immediate>
+   *   <App /> // Must check isInitialized in components
+   * </LineraProvider>
+   */
+  immediate?: boolean;
 }
 
 /**
@@ -76,25 +107,30 @@ export interface LineraProviderProps {
  *
  * @example
  * ```tsx
- * // Example 1: Constant address (recommended - most efficient)
- * <LineraProvider
- *   faucetUrl="http://localhost:8080"
- *   readOnlyWallet={{ constantAddress: "0x0000000000000000000000000000000000000000" }}
- * >
- *   {children}
- * </LineraProvider>
- *
- * // Example 2: Persisted in localStorage
- * <LineraProvider
- *   faucetUrl="http://localhost:8080"
- *   readOnlyWallet={{ storage: 'localStorage' }}
- * >
- *   {children}
- * </LineraProvider>
- *
- * // Example 3: Ephemeral (default - new wallet each reload)
+ * // Example 1: Default - blocks until initialized
  * <LineraProvider faucetUrl="http://localhost:8080">
- *   {children}
+ *   <App />
+ * </LineraProvider>
+ *
+ * // Example 2: Custom fallback during initialization
+ * <LineraProvider
+ *   faucetUrl="http://localhost:8080"
+ *   fallback={<AppSkeleton />}
+ * >
+ *   <App />
+ * </LineraProvider>
+ *
+ * // Example 3: Immediate mode (advanced - requires checking isInitialized)
+ * <LineraProvider faucetUrl="http://localhost:8080" immediate>
+ *   <App /> // Must check isInitialized in components
+ * </LineraProvider>
+ *
+ * // Example 4: Custom error handling
+ * <LineraProvider
+ *   faucetUrl="http://localhost:8080"
+ *   errorFallback={(error) => <ErrorPage error={error} />}
+ * >
+ *   <App />
  * </LineraProvider>
  * ```
  */
@@ -106,6 +142,9 @@ export function LineraProvider({
   skipProcessInbox,
   readOnlyWallet,
   logging,
+  fallback,
+  errorFallback,
+  immediate = false,
 }: LineraProviderProps) {
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -151,7 +190,19 @@ export function LineraProvider({
     initClient();
   }, [faucetUrl, network, autoConnect, skipProcessInbox, readOnlyWallet]);
 
+  // Immediate mode: render children immediately (advanced users only)
+  if (immediate) {
+    return <>{children}</>;
+  }
+
+  // Error state
   if (error) {
+    // Custom error component
+    if (errorFallback) {
+      return <>{errorFallback(error)}</>;
+    }
+
+    // Default error UI
     return (
       <div style={{ padding: '20px', color: 'red' }}>
         <h2>Linera Initialization Error</h2>
@@ -161,7 +212,14 @@ export function LineraProvider({
     );
   }
 
+  // Loading state
   if (!isInitialized) {
+    // Custom fallback
+    if (fallback) {
+      return <>{fallback}</>;
+    }
+
+    // Default loading UI
     return (
       <div style={{ padding: '20px' }}>
         <p>Initializing Linera client...</p>
@@ -169,5 +227,6 @@ export function LineraProvider({
     );
   }
 
+  // Initialized: render children
   return <>{children}</>;
 }

@@ -11,7 +11,7 @@ import type { ApplicationClient } from '../lib/linera/types';
 import { useLineraClient } from './useLineraClient';
 import { logger } from '../utils/logger';
 
-export interface UseApplicationReturn {
+export interface UseLineraApplicationReturn {
   /** Application client */
   app: ApplicationClient | null;
 
@@ -24,11 +24,14 @@ export interface UseApplicationReturn {
   /** Can perform write operations */
   canWrite: boolean;
 
-  /** Execute a query */
-  query: <T = unknown>(gql: string) => Promise<T>;
+  /** Execute a query on the current chain */
+  query: <T = unknown>(gql: string, blockHash?: string) => Promise<T>;
 
-  /** Execute a mutation */
-  mutate: <T = unknown>(gql: string) => Promise<T>;
+  /** Execute a mutation on the current chain */
+  mutate: <T = unknown>(gql: string, blockHash?: string) => Promise<T>;
+
+  /** Query any chain by ID (cross-chain query) */
+  queryChain: <T = unknown>(chainId: string, gql: string) => Promise<T>;
 }
 
 /**
@@ -63,7 +66,7 @@ export interface UseApplicationReturn {
  * }
  * ```
  */
-export function useApplication(appId: string): UseApplicationReturn {
+export function useLineraApplication(appId: string): UseLineraApplicationReturn {
   const { getApplication, isInitialized, canWrite } = useLineraClient();
   const [app, setApp] = useState<ApplicationClient | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -102,18 +105,25 @@ export function useApplication(appId: string): UseApplicationReturn {
     };
   }, [appId, getApplication, isInitialized, canWrite]); // Re-load when canWrite changes
 
-  const query = useCallback(async <T = unknown>(gql: string): Promise<T> => {
+  const query = useCallback(async <T = unknown>(gql: string, blockHash?: string): Promise<T> => {
     if (!app) {
       throw new Error('Application not initialized. Ensure Linera client is ready.');
     }
-    return app.query<T>(gql);
+    return app.query<T>(gql, blockHash);
   }, [app]);
 
-  const mutate = useCallback(async <T = unknown>(gql: string): Promise<T> => {
+  const mutate = useCallback(async <T = unknown>(gql: string, blockHash?: string): Promise<T> => {
     if (!app) {
       throw new Error('Application not initialized. Ensure Linera client is ready.');
     }
-    return app.mutate<T>(gql);
+    return app.mutate<T>(gql, blockHash);
+  }, [app]);
+
+  const queryChain = useCallback(async <T = unknown>(chainId: string, gql: string): Promise<T> => {
+    if (!app) {
+      throw new Error('Application not initialized. Ensure Linera client is ready.');
+    }
+    return app.queryChain<T>(chainId, gql);
   }, [app]);
 
   return {
@@ -121,6 +131,7 @@ export function useApplication(appId: string): UseApplicationReturn {
     isReady: app !== null && !isLoading,
     isLoading,
     canWrite,
+    queryChain,
     query,
     mutate,
   };

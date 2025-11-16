@@ -16,4 +16,7 @@ export default defineConfig({
   external: ['react', 'react-dom', '@linera/client', 'next', 'ethers', 'vite'],
   treeshake: true,
   minify: true,
+  banner: {
+    js: '"use client";',
+  },
 });

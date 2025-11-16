@@ -3,9 +3,9 @@
  */
 
 export { useLineraClient } from './useLineraClient';
-export { useApplication } from './useLineraApplication';
+export { useLineraApplication } from './useLineraApplication';
 export { useWalletConnection } from './useWalletConnection';
 
 export type { UseLineraClientReturn } from './useLineraClient';
-export type { UseApplicationReturn } from './useLineraApplication';
+export type { UseLineraApplicationReturn } from './useLineraApplication';
 export type { UseWalletConnectionReturn } from './useWalletConnection';

@@ -121,10 +121,10 @@ export interface ApplicationClient {
   readonly application: Application;
 
   /** Execute a GraphQL query */
-  query<T = unknown>(gql: string): Promise<T>;
+  query<T = unknown>(gql: string, blockHash?: string): Promise<T>;
 
   /** Execute a GraphQL mutation (requires full client) */
-  mutate<T = unknown>(gql: string): Promise<T>;
+  mutate<T = unknown>(gql: string, blockHash?: string): Promise<T>;
   
   /**
    * Query any chain by ID via HTTP (no need to claim it)

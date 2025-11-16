@@ -34,10 +34,10 @@ export class ApplicationClientImpl implements ApplicationClient {
    * Execute a GraphQL query
    * Works in both read-only and full mode
    */
-  async query<T = unknown>(gql: string): Promise<T> {
+  async query<T = unknown>(gql: string, blockHash?: string): Promise<T> {
     try {
       logger.debug(`[ApplicationClient] Querying ${this.appId}:`, gql);
-      const result = await this.application.query(gql);
+      const result = await this.application.query(gql, blockHash);
       return result as T;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -50,7 +50,7 @@ export class ApplicationClientImpl implements ApplicationClient {
    * Execute a GraphQL mutation
    * Requires full mode (MetaMask connected)
    */
-  async mutate<T = unknown>(gql: string): Promise<T> {
+  async mutate<T = unknown>(gql: string, blockHash?: string): Promise<T> {
     if (!this.canWrite) {
       throw new Error(
         'Mutations require wallet connection. Please connect MetaMask to perform write operations.'
@@ -59,7 +59,7 @@ export class ApplicationClientImpl implements ApplicationClient {
 
     try {
       logger.debug(`[ApplicationClient] Mutating ${this.appId}:`, gql);
-      const result = await this.application.query(gql); // Note: Linera uses query() for mutations too
+      const result = await this.application.query(gql, blockHash); // Note: Linera uses query() for mutations too
       return result as T;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));

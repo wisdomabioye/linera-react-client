@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/wisdomabioye/linera-react-client/compare/v1.0.2...v1.1.0) (2025-11-16)
+
+
+### Features
+
+* enhance Linera client setup with improved error handling and dynamic module loading ([1b1c5a3](https://github.com/wisdomabioye/linera-react-client/commit/1b1c5a340d155c5e3ad929b24ec2d812f3dfb066))
+
 ## [1.0.2](https://github.com/wisdomabioye/linera-react-client/compare/v1.0.1...v1.0.2) (2025-11-13)
 
 

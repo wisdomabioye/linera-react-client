@@ -283,10 +283,74 @@ export function WalletButton() {
 
 ### 4. Query and mutate applications
 
+**NEW: Using Dual-Chain Architecture (Recommended)**
+
 ```typescript
 'use client';
 
 import { useApplication } from 'linera-react-client';
+import { useEffect, useState } from 'react';
+
+export function AuctionList() {
+  const { app, isReady } = useApplication(APP_ID);
+  const [auctions, setAuctions] = useState([]);
+
+  useEffect(() => {
+    if (!isReady || !app) return;
+
+    const fetchAuctions = async () => {
+      // Use publicClient for queries - always available
+      const result = await app.publicClient.query<{ auctions: Auction[] }>(
+        '{ "query": "query { auctions }" }'
+      );
+      setAuctions(result.auctions);
+    };
+
+    fetchAuctions();
+  }, [isReady, app]);
+
+  const handleBid = async (auctionId: string, amount: number) => {
+    if (!app?.walletClient) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    // Use walletClient for user mutations - requires wallet connection
+    await app.walletClient.mutate(`{
+      "query": "mutation { placeBid(auctionId: \\"${auctionId}\\", amount: ${amount}) }"
+    }`);
+  };
+
+  const handleSubscribe = async (channelId: string) => {
+    if (!app) return;
+
+    // Use publicClient.systemMutate for subscriptions - no wallet needed!
+    await app.publicClient.systemMutate(`
+      mutation { subscribe(channelId: "${channelId}") }
+    `);
+  };
+
+  return (
+    <div>
+      {auctions.map(auction => (
+        <AuctionCard
+          key={auction.id}
+          auction={auction}
+          onBid={handleBid}
+          onSubscribe={handleSubscribe}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+**Legacy API (Still Supported, Deprecated)**
+
+```typescript
+'use client';
+
+import { useApplication, OperationType } from 'linera-react-client';
 import { useEffect, useState } from 'react';
 
 export function AuctionList() {
@@ -326,6 +390,271 @@ export function AuctionList() {
   );
 }
 ```
+
+## Dual-Chain Architecture 🆕
+
+**Version 1.1.0** introduces a powerful dual-chain architecture that separates read operations from write operations for better UX and efficiency.
+
+### The Problem
+
+Previously, Linera required claiming a new chain every time a wallet was connected or switched. This meant:
+- ❌ Chain IDs changed when wallets connected
+- ❌ Subscriptions were lost on wallet disconnect
+- ❌ Users needed to sign for cross-chain subscriptions
+
+### The Solution: Two Chains
+
+The new architecture maintains **two separate chains** with different purposes:
+
+| Chain Type | Purpose | Signer | Persistence | Use Cases |
+|------------|---------|--------|-------------|-----------|
+| **Public Chain** | Read & Subscribe | Temporary (auto) | Persists across wallet connections | Queries, subscriptions, cross-chain messaging |
+| **Wallet Chain** | User Mutations | MetaMask | Only when wallet connected | Transfers, user actions requiring signature |
+
+### How It Works
+
+```typescript
+await client.initializeReadOnly();
+// ✅ Public chain claimed: chain_abc123 (temporary signer)
+
+const app = await client.getApplication(appId);
+
+// Query on public chain (always available)
+await app.publicClient.query('{ balance }');
+
+// Subscribe on public chain (auto-signed, no user prompt!)
+await app.publicClient.systemMutate('mutation { subscribe(...) }');
+
+// Connect wallet
+await client.connectWallet(metamaskSigner);
+// ✅ Wallet chain claimed: chain_def456 (MetaMask signer)
+// ✅ Public chain STILL ACTIVE: chain_abc123
+
+// User mutations on wallet chain (requires signature)
+await app.walletClient.mutate('mutation { transfer(...) }');
+
+// Disconnect wallet
+await client.disconnectWallet();
+// ✅ Wallet chain destroyed: chain_def456
+// ✅ Public chain STILL ACTIVE: chain_abc123
+// ✅ Subscriptions still working!
+```
+
+### Key Benefits
+
+#### 1. **Persistent Subscriptions**
+```typescript
+// Subscribe in READ_ONLY mode
+await app.publicClient.systemMutate('mutation { subscribe(channelId: "abc") }');
+
+// Connect wallet to send messages
+await client.connectWallet(signer);
+await app.walletClient.mutate('mutation { sendMessage(...) }');
+
+// Disconnect wallet
+await client.disconnectWallet();
+
+// ✅ Subscription STILL ACTIVE - continue receiving messages!
+```
+
+#### 2. **No User Prompts for Subscriptions**
+```typescript
+// OLD WAY: Required wallet connection and user signature
+await connectWallet();
+await app.mutate('mutation { subscribe(...) }'); // 😓 MetaMask popup
+
+// NEW WAY: Auto-signed on public chain
+await app.publicClient.systemMutate('mutation { subscribe(...) }'); // 🎉 No popup!
+```
+
+#### 3. **Stable Chain IDs & Addresses**
+```typescript
+const state = client.getState();
+
+console.log(state.publicAddress);   // 0x742d35... (temporary)
+console.log(state.publicChainId);   // chain_abc123
+console.log(state.walletAddress);   // undefined
+console.log(state.walletChainId);   // undefined
+
+await client.connectWallet(signer1);
+
+console.log(state.publicAddress);   // 0x742d35... (same!)
+console.log(state.publicChainId);   // chain_abc123 (same!)
+console.log(state.walletAddress);   // 0x123abc... (MetaMask)
+console.log(state.walletChainId);   // chain_def456
+
+await client.switchWallet(signer2);
+
+console.log(state.publicAddress);   // 0x742d35... (same!)
+console.log(state.publicChainId);   // chain_abc123 (same!)
+console.log(state.walletAddress);   // 0x456def... (new wallet)
+console.log(state.walletChainId);   // chain_ghi789 (new wallet chain)
+```
+
+### API: PublicClient vs WalletClient
+
+#### **PublicClient** (Always Available)
+
+```typescript
+interface PublicClient {
+  // Query on public chain
+  query<T>(gql: string): Promise<T>;
+
+  // Query any chain via HTTP
+  queryChain<T>(chainId: string, gql: string): Promise<T>;
+
+  // System mutations (auto-signed, no user prompt)
+  systemMutate<T>(gql: string): Promise<T>;
+}
+
+// Usage
+const app = await client.getApplication(appId);
+
+// Always available, even without wallet
+await app.publicClient.query('{ balance }');
+await app.publicClient.queryChain('other-chain-id', '{ data }');
+await app.publicClient.systemMutate('mutation { subscribe(...) }');
+```
+
+#### **WalletClient** (Only When Wallet Connected)
+
+```typescript
+interface WalletClient extends PublicClient {
+  // User mutations (requires MetaMask signature)
+  mutate<T>(gql: string): Promise<T>;
+
+  // Get wallet address
+  getAddress(): string;
+
+  // Get wallet chain ID
+  getChainId(): string;
+}
+
+// Usage
+if (app.walletClient) {
+  // Wallet-specific operations
+  await app.walletClient.mutate('mutation { transfer(...) }');
+  console.log('Wallet:', app.walletClient.getAddress());
+  console.log('Chain:', app.walletClient.getChainId());
+
+  // Also has all publicClient methods
+  await app.walletClient.query('{ balance }');
+}
+```
+
+### Migration from Legacy API
+
+The legacy API is still supported but deprecated. Here's how to migrate:
+
+#### **Queries**
+
+```typescript
+// OLD (Deprecated)
+const data = await app.query('{ balance }');
+
+// NEW (Recommended)
+const data = await app.publicClient.query('{ balance }');
+```
+
+#### **User Mutations**
+
+```typescript
+// OLD (Deprecated)
+if (canWrite) {
+  await app.mutate('mutation { transfer(...) }');
+}
+
+// NEW (Recommended)
+if (app.walletClient) {
+  await app.walletClient.mutate('mutation { transfer(...) }');
+}
+```
+
+#### **System Mutations (NEW!)**
+
+```typescript
+// OLD (Required operationType parameter)
+await app.mutate('mutation { subscribe(...) }', {
+  operationType: OperationType.SYSTEM
+});
+
+// NEW (Cleaner, explicit)
+await app.publicClient.systemMutate('mutation { subscribe(...) }');
+```
+
+#### **Cross-Chain Queries**
+
+```typescript
+// OLD (Deprecated)
+const data = await app.queryChain('chain-id', '{ data }');
+
+// NEW (Recommended)
+const data = await app.publicClient.queryChain('chain-id', '{ data }');
+```
+
+### Real-World Example: Chat App
+
+```typescript
+'use client';
+
+import { useLineraClient, useApplication } from 'linera-react-client';
+
+export function Chat({ channelId }: { channelId: string }) {
+  const { isConnected } = useLineraClient();
+  const { app, isReady } = useApplication(CHAT_APP_ID);
+  const [messages, setMessages] = useState([]);
+
+  useEffect(() => {
+    if (!isReady || !app) return;
+
+    // Subscribe to messages on public chain (no wallet needed!)
+    app.publicClient.systemMutate(`
+      mutation { subscribe(channelId: "${channelId}") }
+    `).then(() => {
+      console.log('Subscribed! Receiving messages...');
+    });
+
+    // Fetch messages on public chain
+    const fetchMessages = async () => {
+      const data = await app.publicClient.query('{ messages }');
+      setMessages(data.messages);
+    };
+
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 1000);
+    return () => clearInterval(interval);
+  }, [isReady, app, channelId]);
+
+  const sendMessage = async (text: string) => {
+    if (!app?.walletClient) {
+      alert('Please connect wallet to send messages');
+      return;
+    }
+
+    // Send message on wallet chain (requires signature)
+    await app.walletClient.mutate(`
+      mutation { sendMessage(text: "${text}") }
+    `);
+  };
+
+  return (
+    <div>
+      <MessageList messages={messages} />
+      {isConnected ? (
+        <MessageInput onSend={sendMessage} />
+      ) : (
+        <p>Connect wallet to send messages</p>
+      )}
+    </div>
+  );
+}
+```
+
+**Key Benefits in This Example:**
+- ✅ Users can read messages without wallet
+- ✅ Subscription persists even if wallet disconnects
+- ✅ No MetaMask popup for subscribing
+- ✅ Only requires wallet for sending messages
 
 ## Cross-Chain Querying
 
@@ -552,13 +881,19 @@ Main hook for accessing Linera client functionality.
 
 ```typescript
 const {
-  client,          // Raw Linera client instance
+  client,          // Raw Linera client instance (deprecated, use getPublicClient/getWalletClient)
   wallet,          // Wallet instance
   isInitialized,   // Is client initialized
   isReadOnly,      // Is in read-only mode (guest)
   isConnected,     // Is wallet connected
   walletAddress,   // Connected wallet address
-  chainId,         // Claimed chain ID
+
+  // NEW: Dual-chain support
+  publicAddress,   // Public (temporary) address (always available)
+  publicChainId,   // Public chain ID (always available)
+  walletChainId,   // Wallet chain ID (only when wallet connected)
+  chainId,         // Deprecated: returns walletChainId || publicChainId
+
   canWrite,        // Can perform write operations
   error,           // Any error that occurred
   getApplication,  // Get application client
@@ -588,26 +923,52 @@ Hook for accessing a specific Linera application.
 
 ```typescript
 const {
-  app,         // Application client
+  app,         // Application client with publicClient and walletClient
   isReady,     // Is client ready
   isLoading,   // Is loading application
+
+  // Legacy API (deprecated)
   canWrite,    // Can perform write operations
-  query,       // Execute a query
-  mutate,      // Execute a mutation
-  queryChain,  // Query any chain by ID (cross-chain)
+  query,       // Execute a query (deprecated, use app.publicClient.query)
+  mutate,      // Execute a mutation (deprecated, use app.publicClient.systemMutate or app.walletClient.mutate)
+  queryChain,  // Query any chain by ID (deprecated, use app.publicClient.queryChain)
 } = useApplication(APP_ID);
 ```
 
-**Application Client Methods:**
+**NEW: Application Client with Dual-Chain Support**
 
 ```typescript
-// Query current chain
+// PublicClient - Always available
+await app.publicClient.query<T>('{ balance }');
+await app.publicClient.queryChain<T>('other-chain-id', '{ data }');
+await app.publicClient.systemMutate<T>('mutation { subscribe(...) }');
+
+// WalletClient - Only when wallet connected
+if (app.walletClient) {
+  await app.walletClient.mutate<T>('mutation { transfer(...) }');
+  const address = app.walletClient.getAddress();
+  const chainId = app.walletClient.getChainId();
+
+  // WalletClient extends PublicClient
+  await app.walletClient.query<T>('{ balance }');
+}
+```
+
+**Legacy Application Client Methods (Deprecated):**
+
+```typescript
+// Query current chain (deprecated)
 const data = await app.query<T>('query { ... }');
 
-// Mutate (requires wallet connection)
+// Mutate (requires wallet connection, deprecated)
 const result = await app.mutate<T>('mutation { ... }');
 
-// Query any chain by ID (NEW - cross-chain querying)
+// System mutation with operationType (deprecated)
+const result = await app.mutate<T>('mutation { subscribe(...) }', {
+  operationType: OperationType.SYSTEM
+});
+
+// Query any chain by ID (deprecated)
 const crossChainData = await app.queryChain<T>(
   'target-chain-id',
   'query { ... }'
@@ -868,11 +1229,16 @@ npm run dev
 
 ## Features
 
+- ✅ **Dual-chain architecture (v1.1.0+)** - Separate public and wallet chains for better UX
+  - ✅ Persistent subscriptions across wallet connections
+  - ✅ No user prompts for cross-chain subscriptions
+  - ✅ Stable chain IDs
 - ✅ React hooks for Linera client
 - ✅ Wallet connection management (MetaMask)
 - ✅ Read-only mode with temporary wallets
 - ✅ Application query and mutation
 - ✅ **Cross-chain querying** - Query any chain by ID via HTTP
+- ✅ **System mutations** - Auto-signed operations without wallet prompts
 - ✅ Full TypeScript support with type definitions
 - ✅ Framework configuration helpers:
   - ✅ Next.js

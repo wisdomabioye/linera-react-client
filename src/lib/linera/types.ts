@@ -36,7 +36,28 @@ export interface ClientState {
   /** Connected wallet address (if any) */
   walletAddress?: string;
 
-  /** Claimed chain ID for current wallet */
+  /**
+   * Public address - temporary address used for public chain
+   * Always available after initialization
+   */
+  publicAddress?: string;
+
+  /**
+   * Public chain ID - always available after initialization
+   * Used for queries and cross-chain subscriptions
+   */
+  publicChainId?: string;
+
+  /**
+   * Wallet chain ID - only when wallet is connected
+   * Used for user mutations
+   */
+  walletChainId?: string;
+
+  /**
+   * @deprecated Use publicChainId or walletChainId instead
+   * Returns walletChainId if available, otherwise publicChainId
+   */
   chainId?: string;
 
   /** Faucet URL being used */
@@ -111,22 +132,97 @@ export interface ClientConfig {
 }
 
 /**
+ * Operation type for mutations
+ */
+export enum OperationType {
+  /** Pure read operations (queries) */
+  READ = 'read',
+
+  /** System operations auto-signed with temporary wallet (subscriptions, heartbeat) */
+  SYSTEM = 'system',
+
+  /** User-initiated operations requiring wallet signature */
+  USER = 'user',
+}
+
+/**
+ * Options for mutation operations
+ */
+export interface MutateOptions {
+  /** Operation type - defaults to USER */
+  operationType?: OperationType;
+
+  /** Optional block hash */
+  blockHash?: string;
+}
+
+/**
+ * Public client interface - operations that don't require user wallet
+ */
+export interface PublicClient {
+  /** Execute GraphQL query on public chain */
+  query<T = unknown>(gql: string, blockHash?: string): Promise<T>;
+
+  /** Query any chain by ID via HTTP */
+  queryChain<T = unknown>(chainId: string, gql: string): Promise<T>;
+
+  /** Execute system mutations (auto-signed with temporary wallet, no user prompt) */
+  systemMutate<T = unknown>(gql: string, blockHash?: string): Promise<T>;
+}
+
+/**
+ * Wallet client interface - operations requiring user wallet
+ */
+export interface WalletClient extends PublicClient {
+  /** Execute user mutations (requires wallet signature) */
+  mutate<T = unknown>(gql: string, blockHash?: string): Promise<T>;
+
+  /** Get connected wallet address */
+  getAddress(): string;
+
+  /** Get wallet chain ID */
+  getChainId(): string;
+}
+
+/**
  * Application query/mutation wrapper interface
  */
 export interface ApplicationClient {
   /** Application ID */
   readonly appId: string;
 
-  /** Underlying Linera application instance */
+  /**
+   * @deprecated Use publicClient or walletClient instead
+   * Underlying Linera application instance (public chain)
+   */
   readonly application: Application;
 
-  /** Execute a GraphQL query */
+  /**
+   * Public client for queries and system operations
+   * Always available (uses public chain with temporary signer)
+   */
+  readonly publicClient: PublicClient;
+
+  /**
+   * Wallet client for user mutations
+   * Only available when wallet is connected (uses wallet chain)
+   */
+  readonly walletClient?: WalletClient;
+
+  /**
+   * @deprecated Use publicClient.query() instead
+   * Execute a GraphQL query
+   */
   query<T = unknown>(gql: string, blockHash?: string): Promise<T>;
 
-  /** Execute a GraphQL mutation (requires full client) */
-  mutate<T = unknown>(gql: string, blockHash?: string): Promise<T>;
-  
   /**
+   * @deprecated Use publicClient.systemMutate() or walletClient.mutate() instead
+   * Execute a GraphQL mutation (requires full client or operationType: SYSTEM)
+   */
+  mutate<T = unknown>(gql: string, options?: MutateOptions | string): Promise<T>;
+
+  /**
+   * @deprecated Use publicClient.queryChain() instead
    * Query any chain by ID via HTTP (no need to claim it)
    * @param chainId - Target chain ID to query
    * @param gql - GraphQL query string

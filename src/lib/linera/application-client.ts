@@ -40,6 +40,7 @@ export class ApplicationClientImpl implements ApplicationClient {
   private publicChainId?: string;
   private walletChainId?: string;
   private walletAddress?: string;
+  private publicAddress?: string;
 
   constructor(
     appId: string,
@@ -49,7 +50,8 @@ export class ApplicationClientImpl implements ApplicationClient {
     faucetUrl: string,
     publicChainId?: string,
     walletChainId?: string,
-    walletAddress?: string
+    walletAddress?: string,
+    publicAddress?: string
   ) {
     this.appId = appId;
     this.publicApp = publicApp;
@@ -60,6 +62,7 @@ export class ApplicationClientImpl implements ApplicationClient {
     this.publicChainId = publicChainId;
     this.walletChainId = walletChainId;
     this.walletAddress = walletAddress;
+    this.publicAddress = publicAddress;
 
     // Initialize split clients
     this.publicClient = this.createPublicClient();
@@ -200,7 +203,18 @@ export class ApplicationClientImpl implements ApplicationClient {
           throw new Error(`Cross-chain query failed: ${err.message}`);
         }
       },
-
+      getAddress: (): string => {
+        if (!this.publicAddress) {
+          throw new Error('Public address not available');
+        }
+        return this.publicAddress;
+      },
+      getChainId: (): string => {
+        if (!this.publicChainId) {
+          throw new Error('Public chain ID not available');
+        }
+        return this.publicChainId;
+      },
       systemMutate: async <T>(gql: string, blockHash?: string): Promise<T> => {
         return this.executeSystemMutation<T>(gql, blockHash);
       },

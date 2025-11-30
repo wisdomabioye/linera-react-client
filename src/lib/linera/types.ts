@@ -166,6 +166,12 @@ export interface PublicClient {
   /** Query any chain by ID via HTTP */
   queryChain<T = unknown>(chainId: string, gql: string): Promise<T>;
 
+  /** Get connected public address */
+  getAddress(): string;
+
+  /** Get public chain ID */
+  getChainId(): string;
+
   /** Execute system mutations (auto-signed with temporary wallet, no user prompt) */
   systemMutate<T = unknown>(gql: string, blockHash?: string): Promise<T>;
 }

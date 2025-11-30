@@ -333,7 +333,8 @@ export class LineraClientManager implements ILineraClientManager {
         this.config.faucetUrl,
         this.publicChainId || undefined,
         this.walletChainId || undefined,
-        this.walletAddress || undefined
+        this.walletAddress || undefined,
+        this.publicAddress || undefined,
       );
     } catch (error) {
       logger.error('[ClientManager] Failed to get application:', error);

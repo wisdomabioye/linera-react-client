@@ -23,10 +23,9 @@ import {
   StateChangeCallback,
   ILineraClientManager,
 } from './types';
-
+import type { LineraModule } from './linera-types';
 import { TemporarySigner } from './temporary-signer';
 import { ApplicationClientImpl } from './application-client';
-import type { LineraModule } from './linera-types';
 import { logger } from '../../utils/logger';
 
 type SignerWithAddress = Signer & {address: () => Promise<string>}

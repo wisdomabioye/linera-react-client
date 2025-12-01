@@ -203,18 +203,21 @@ export class ApplicationClientImpl implements ApplicationClient {
           throw new Error(`Cross-chain query failed: ${err.message}`);
         }
       },
+
       getAddress: (): string => {
         if (!this.publicAddress) {
           throw new Error('Public address not available');
         }
         return this.publicAddress;
       },
+
       getChainId: (): string => {
         if (!this.publicChainId) {
           throw new Error('Public chain ID not available');
         }
         return this.publicChainId;
       },
+      
       systemMutate: async <T>(gql: string, blockHash?: string): Promise<T> => {
         return this.executeSystemMutation<T>(gql, blockHash);
       },
@@ -223,7 +226,51 @@ export class ApplicationClientImpl implements ApplicationClient {
 
   private createWalletClient(): WalletClient {
     return {
-      ...this.publicClient,
+      query: async <T>(gql: string, blockHash?: string): Promise<T> => {
+        if (!this.walletClient || !this.walletApp) {
+          throw new Error('Wallet client requires wallet connection');
+        }
+
+        try {
+          logger.debug(`[WalletApplicationClient] Query on wallet chain ${this.walletChainId}:`, gql);
+          const result = await this.walletClient.query(gql, blockHash);
+          return result as T;
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          logger.error(`[WalletApplicationClient] Query failed:`, err);
+          throw new Error(`WalletApplication query failed: ${err.message}`);
+        }
+      },
+
+      queryChain: async <T>(chainId: string, gql: string): Promise<T> => {
+        const endpoint = `${this.faucetUrl}/chains/${chainId}/applications/${this.appId}`;
+
+        try {
+          logger.debug(`[WalletApplicationClient] QueryChain ${chainId}:`, gql);
+
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: gql })
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          const result = await response.json();
+
+          if (result.errors) {
+            throw new Error(result.errors[0]?.message || 'GraphQL query failed');
+          }
+
+          return result.data as T;
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          logger.error(`[ApplicationClient] QueryChain failed:`, err);
+          throw new Error(`Cross-chain query failed: ${err.message}`);
+        }
+      },
 
       mutate: async <T>(gql: string, blockHash?: string): Promise<T> => {
         if (!this.canWriteWithWallet || !this.walletApp) {

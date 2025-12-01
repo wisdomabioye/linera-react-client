@@ -179,15 +179,21 @@ export interface PublicClient {
 /**
  * Wallet client interface - operations requiring user wallet
  */
-export interface WalletClient extends PublicClient {
-  /** Execute user mutations (requires wallet signature) */
-  mutate<T = unknown>(gql: string, blockHash?: string): Promise<T>;
+export interface WalletClient {
+  /** Execute GraphQL query on wallet chain */
+  query<T = unknown>(gql: string, blockHash?: string): Promise<T>;
+
+  /** Query any chain by ID via HTTP */
+  queryChain<T = unknown>(chainId: string, gql: string): Promise<T>;
 
   /** Get connected wallet address */
   getAddress(): string;
 
   /** Get wallet chain ID */
   getChainId(): string;
+
+  /** Execute user mutations (requires wallet signature) */
+  mutate<T = unknown>(gql: string, blockHash?: string): Promise<T>;
 }
 
 /**

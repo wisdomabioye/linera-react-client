@@ -283,6 +283,11 @@ export interface ILineraClientManager {
 
   /** Clean up and destroy client */
   destroy(): Promise<void>;
+
+  /**
+   * reinitialize client, useful when 'runtime' error occur
+   */
+  reinit(): Promise<void>;
 }
 
 /**

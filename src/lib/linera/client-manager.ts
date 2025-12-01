@@ -365,7 +365,7 @@ export class LineraClientManager implements ILineraClientManager {
    */
   async destroy(): Promise<void> {
     logger.info('[ClientManager] Destroying client...');
-
+    
     // Cleanup public chain
     if (this.publicClient) {
       (this.publicClient).free();
@@ -399,6 +399,109 @@ export class LineraClientManager implements ILineraClientManager {
 
     this.notifyStateChange();
   }
+
+  /**
+   * Robust reinit: attempt a full deterministic restart.
+   *
+   * Strategy:
+   * 1. Try a best-effort destroy (don't let its errors stop progress).
+   * 2. Force-clear any lingering references (free() where available).
+   * 3. Reload the linera module and init the wasm (init()).
+   * 4. Recreate public client (and reconnect wallet signer if present).
+   * 5. If anything irrecoverable happens, perform a hard reload.
+   */
+  async reinit(): Promise<void> {
+    logger.info('[ClientManager] reinit(): starting full restart');
+
+    // Preserve wallet signer so we can try to reconnect it after reinit
+    const previousWalletSigner = this.walletSigner;
+    const hadWallet = !!previousWalletSigner;
+
+    // 1) Best-effort destroy but never abort on error
+    try {
+      // destroy() may throw if wasm is corrupted — catch and proceed
+      await this.destroy();
+    } catch (destroyErr) {
+      logger.warn('[ClientManager] reinit(): destroy() threw, continuing anyway', destroyErr);
+      // proceed to forced cleanup below
+    }
+
+    // 2) Forced cleanup of any lingering references (ignore errors)
+    try {
+      if (this.publicClient) {
+        try { (this.publicClient as any).free?.(); } catch (e) { logger.debug('[ClientManager] publicClient.free() failed', e); }
+      }
+    } catch (e) { logger.debug('[ClientManager] ignoring publicClient free error', e); }
+    try {
+      if (this.publicWallet) { try { (this.publicWallet as any).free?.(); } catch (e) { logger.debug('[ClientManager] publicWallet.free() failed', e); } }
+    } catch (e) { logger.debug('[ClientManager] ignoring publicWallet free error', e); }
+
+    // Clear internal state references to ensure deterministic init path
+    this.publicClient = null;
+    this.publicWallet = null;
+    this.publicSigner = null;
+    this.publicChainId = null;
+    this.publicAddress = null;
+
+    this.walletClient = null;
+    this.walletWallet = null;
+    this.walletSigner = previousWalletSigner ?? null; // keep signer for reconnect attempt
+    this.walletChainId = null;
+    this.walletAddress = null;
+
+    this.mode = ClientMode.UNINITIALIZED;
+    this.notifyStateChange();
+
+    // 3) (Re)load linera module and init WASM
+    try {
+      // Reload module to get a fresh vm if possible
+      this.lineraModule = await this.loadLinera();
+      const { default: init } = this.lineraModule as LineraModule;
+
+      // init() may itself throw if the wasm is unhealthy; wrap it
+      await init();
+    } catch (initErr) {
+      logger.error('[ClientManager] reinit(): wasm init failed', initErr);
+      // fallback to full reload of the page as last resort
+      try {
+        logger.info('[ClientManager] reinit(): falling back to window.location.reload()');
+        window.location.reload();
+        return;
+      } catch {
+        throw initErr;
+      }
+    }
+
+    // 4) Recreate public chain resources by calling initializeReadOnly()
+    try {
+      await this.initializeReadOnly();
+    } catch (initReadOnlyErr) {
+      logger.error('[ClientManager] reinit(): initializeReadOnly() failed', initReadOnlyErr);
+      // hard reload as fallback
+      try {
+        window.location.reload();
+        return;
+      } catch {
+        throw initReadOnlyErr;
+      }
+    }
+
+    // 5) If we previously had a wallet signer, try to reconnect it (best-effort)
+    if (hadWallet && previousWalletSigner) {
+      try {
+        await this.connectWallet(previousWalletSigner);
+      } catch (walletErr) {
+        // Keep public client running; notify listeners about partial failure.
+        logger.warn('[ClientManager] reinit(): reconnecting wallet failed (public client active)', walletErr);
+        this.notifyStateChange({ error: walletErr instanceof Error ? walletErr : new Error(String(walletErr)) });
+      }
+    }
+
+    // Final state notification
+    this.notifyStateChange();
+    logger.info('[ClientManager] reinit(): completed successfully (or recovered to public client)');
+  }
+
 
   /**
    * Load Linera module

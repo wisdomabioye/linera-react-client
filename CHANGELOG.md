@@ -1,3 +1,13 @@
+# [1.2.0](https://github.com/wisdomabioye/linera-react-client/compare/v1.1.0...v1.2.0) (2025-12-01)
+
+
+### Features
+
+* add public address and chain ID retrieval methods to ApplicationClient ([bcdc3a9](https://github.com/wisdomabioye/linera-react-client/commit/bcdc3a93cdfc51c3d09501911848c4f7f2e4147c))
+* add reinit method to LineraClientManager for robust client recovery ([90ae3c6](https://github.com/wisdomabioye/linera-react-client/commit/90ae3c6f69f0d61c8624b0ad8b14075601787d25))
+* enhance WalletClient interface with query methods for improved cross-chain operations ([b592db7](https://github.com/wisdomabioye/linera-react-client/commit/b592db78106370e5a34d28a2a5efd783b3b01ca4))
+* implement dual-chain architecture for improved query and mutation handling ([4db10af](https://github.com/wisdomabioye/linera-react-client/commit/4db10afdf94da62d2c8baeaa718c079ad28066db))
+
 # [1.1.0](https://github.com/wisdomabioye/linera-react-client/compare/v1.0.2...v1.1.0) (2025-11-16)
 
 

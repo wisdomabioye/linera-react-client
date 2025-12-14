@@ -19,7 +19,6 @@ export {
 // Provider
 export {
   LineraProvider,
-  useInboxProcessing,
   type LineraProviderProps
 } from './providers';
 

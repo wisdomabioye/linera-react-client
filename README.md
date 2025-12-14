@@ -391,6 +391,36 @@ export function AuctionList() {
 }
 ```
 
+## Recent Improvements ✨
+
+**Latest Updates** - Performance and stability improvements for better developer experience.
+
+### Bug Fixes & Optimizations
+
+#### Fixed Stale Reference Checks (application-client.ts)
+- **Issue**: WalletClient methods had circular reference checks (`this.walletClient` checking itself)
+- **Fix**: Removed redundant checks, now only validates `walletApp` availability
+- **Impact**: Prevents false positives and provides clearer error messages when wallet is disconnected
+
+#### Fixed Race Condition (useLineraClient.ts)
+- **Issue**: State could be out of sync between initialization and subscription
+- **Fix**: Immediately sync state on mount before subscribing to changes
+- **Impact**: Ensures hook always has current client state, preventing stale data
+
+#### Optimized Wallet Reconnection (client-manager.ts)
+- **Issue**: Redundant state notifications when same wallet reconnects
+- **Fix**: Only notify listeners when signer actually changes
+- **Impact**: Reduces unnecessary re-renders when wallet reconnects with same address
+
+### Performance Benefits
+
+These fixes eliminate:
+- ❌ Unnecessary component re-renders on wallet reconnection
+- ❌ Stale state during initialization
+- ❌ Confusing error messages from circular checks
+
+Result: **Smoother wallet operations and better React performance** 🚀
+
 ## Dual-Chain Architecture 🆕
 
 **Version 1.1.0** introduces a powerful dual-chain architecture that separates read operations from write operations for better UX and efficiency.
@@ -656,6 +686,107 @@ export function Chat({ channelId }: { channelId: string }) {
 - ✅ No MetaMask popup for subscribing
 - ✅ Only requires wallet for sending messages
 
+## Blockchain Notifications
+
+The SDK provides access to Linera's `onNotification()` API for listening to real-time blockchain events through both `publicClient` and `walletClient`.
+
+### Using Notifications with useLineraClient
+
+```typescript
+'use client';
+
+import { useLineraClient } from 'linera-react-client';
+import { useEffect, useState } from 'react';
+
+export function NotificationListener() {
+  const { publicClient, isInitialized } = useLineraClient();
+  const [notifications, setNotifications] = useState([]);
+
+  useEffect(() => {
+    if (!isInitialized || !publicClient) return;
+
+    // Listen to blockchain notifications
+    const handler = (notification: any) => {
+      console.log('Received notification:', notification);
+      setNotifications(prev => [...prev, notification]);
+    };
+
+    publicClient.onNotification(handler);
+
+    // Note: onNotification doesn't return an unsubscribe function
+    // Cleanup happens when component unmounts or client is destroyed
+  }, [publicClient, isInitialized]);
+
+  return (
+    <div>
+      <h2>Blockchain Notifications</h2>
+      <ul>
+        {notifications.map((notif, i) => (
+          <li key={i}>{JSON.stringify(notif)}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+### Listening on Both Chains
+
+You can listen to notifications from both public and wallet chains:
+
+```typescript
+'use client';
+
+import { useLineraClient } from 'linera-react-client';
+import { useEffect, useState } from 'react';
+
+export function DualChainNotifications() {
+  const { publicClient, walletClient, isConnected } = useLineraClient();
+  const [publicNotifications, setPublicNotifications] = useState([]);
+  const [walletNotifications, setWalletNotifications] = useState([]);
+
+  // Listen to public chain notifications (always active)
+  useEffect(() => {
+    if (!publicClient) return;
+
+    publicClient.onNotification((notif: any) => {
+      setPublicNotifications(prev => [...prev, notif]);
+    });
+  }, [publicClient]);
+
+  // Listen to wallet chain notifications (only when wallet connected)
+  useEffect(() => {
+    if (!walletClient || !isConnected) return;
+
+    walletClient.onNotification((notif: any) => {
+      setWalletNotifications(prev => [...prev, notif]);
+    });
+  }, [walletClient, isConnected]);
+
+  return (
+    <div>
+      <div>
+        <h3>Public Chain Notifications</h3>
+        <p>Count: {publicNotifications.length}</p>
+      </div>
+      {isConnected && (
+        <div>
+          <h3>Wallet Chain Notifications</h3>
+          <p>Count: {walletNotifications.length}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### Important Notes
+
+- Notifications are tied to the client instance lifecycle
+- When the client is destroyed or reinitialized, notification handlers are cleared
+- Public chain notifications persist even when wallet disconnects
+- Wallet chain notifications only work when wallet is connected
+
 ## Cross-Chain Querying
 
 The SDK supports querying any chain directly via HTTP without needing to claim or open it first.
@@ -881,24 +1012,38 @@ Main hook for accessing Linera client functionality.
 
 ```typescript
 const {
-  client,          // Raw Linera client instance (deprecated, use getPublicClient/getWalletClient)
+  // Dual-chain clients
+  publicClient,    // Public client (queries, system ops, notifications) - always available
+  walletClient,    // Wallet client (user mutations, notifications) - only when wallet connected
+
+  client,          // Deprecated: use publicClient or walletClient
   wallet,          // Wallet instance
+
+  // State
   isInitialized,   // Is client initialized
   isReadOnly,      // Is in read-only mode (guest)
   isConnected,     // Is wallet connected
-  walletAddress,   // Connected wallet address
+  canWrite,        // Can perform write operations
+  error,           // Any error that occurred
 
-  // NEW: Dual-chain support
+  // Addresses
+  walletAddress,   // Connected wallet address (MetaMask)
   publicAddress,   // Public (temporary) address (always available)
+
+  // Chain IDs
   publicChainId,   // Public chain ID (always available)
   walletChainId,   // Wallet chain ID (only when wallet connected)
   chainId,         // Deprecated: returns walletChainId || publicChainId
 
-  canWrite,        // Can perform write operations
-  error,           // Any error that occurred
+  // Methods
   getApplication,  // Get application client
 } = useLineraClient();
 ```
+
+**New in this version:**
+- `publicClient` and `walletClient` expose the full Client API including `onNotification()`
+- Access to both chain IDs: `publicChainId` and `walletChainId`
+- Access to both addresses: `publicAddress` and `walletAddress`
 
 #### `useWalletConnection()`
 
@@ -1233,10 +1378,16 @@ npm run dev
   - ✅ Persistent subscriptions across wallet connections
   - ✅ No user prompts for cross-chain subscriptions
   - ✅ Stable chain IDs
+  - ✅ Access to both publicClient and walletClient with full API
+- ✅ **Performance optimizations** - Fixed re-render issues and race conditions
+  - ✅ Optimized wallet reconnection (no unnecessary re-renders)
+  - ✅ Fixed stale reference checks
+  - ✅ Eliminated state synchronization race conditions
 - ✅ React hooks for Linera client
 - ✅ Wallet connection management (MetaMask)
 - ✅ Read-only mode with temporary wallets
 - ✅ Application query and mutation
+- ✅ **Blockchain notifications** - Listen to real-time events via onNotification()
 - ✅ **Cross-chain querying** - Query any chain by ID via HTTP
 - ✅ **System mutations** - Auto-signed operations without wallet prompts
 - ✅ Full TypeScript support with type definitions

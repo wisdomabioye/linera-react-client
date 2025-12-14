@@ -227,13 +227,13 @@ export class ApplicationClientImpl implements ApplicationClient {
   private createWalletClient(): WalletClient {
     return {
       query: async <T>(gql: string, blockHash?: string): Promise<T> => {
-        if (!this.walletClient || !this.walletApp) {
-          throw new Error('Wallet client requires wallet connection');
+        if (!this.walletApp) {
+          throw new Error('Wallet not connected or has been disconnected');
         }
 
         try {
           logger.debug(`[WalletApplicationClient] Query on wallet chain ${this.walletChainId}:`, gql);
-          const result = await this.walletClient.query(gql, blockHash);
+          const result = await this.walletApp.query(gql, blockHash);
           return result as T;
         } catch (error) {
           const err = error instanceof Error ? error : new Error(String(error));
@@ -273,8 +273,8 @@ export class ApplicationClientImpl implements ApplicationClient {
       },
 
       mutate: async <T>(gql: string, blockHash?: string): Promise<T> => {
-        if (!this.canWriteWithWallet || !this.walletApp) {
-          throw new Error('Wallet client requires wallet connection');
+        if (!this.walletApp) {
+          throw new Error('Wallet not connected or has been disconnected');
         }
         return this.executeUserMutation<T>(gql, blockHash);
       },

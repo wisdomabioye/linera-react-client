@@ -17,7 +17,11 @@ export {
 } from './hooks';
 
 // Provider
-export { LineraProvider, type LineraProviderProps } from './providers';
+export {
+  LineraProvider,
+  useInboxProcessing,
+  type LineraProviderProps
+} from './providers';
 
 // Core Client Library
 export {

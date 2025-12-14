@@ -15,7 +15,24 @@ export interface UseLineraClientReturn {
   /** Current client state */
   state: ClientState;
 
-  /** Raw Linera client instance */
+  /**
+   * Public client for queries and system operations
+   * Always available after initialization (uses temporary signer)
+   * Has access to onNotification() for blockchain event subscriptions
+   */
+  publicClient: Client | null;
+
+  /**
+   * Wallet client for user mutations
+   * Only available when wallet is connected (uses MetaMask signer)
+   * Has access to onNotification() for blockchain event subscriptions
+   */
+  walletClient: Client | null;
+
+  /**
+   * @deprecated Use publicClient or walletClient instead.
+   * Returns wallet client if available, otherwise public client.
+   */
   client: Client | null;
 
   /** Wallet instance */
@@ -33,7 +50,19 @@ export interface UseLineraClientReturn {
   /** Connected wallet address */
   walletAddress: string | undefined;
 
-  /** Claimed chain ID */
+  /** Public address (temporary signer) */
+  publicAddress: string | undefined;
+
+  /** Public chain ID (always available after init) */
+  publicChainId: string | undefined;
+
+  /** Wallet chain ID (only when wallet connected) */
+  walletChainId: string | undefined;
+
+  /**
+   * @deprecated Use publicChainId or walletChainId from state instead.
+   * Returns walletChainId if available, otherwise publicChainId.
+   */
   chainId: string | undefined;
 
   /** Can perform write operations */
@@ -69,7 +98,10 @@ export function useLineraClient(): UseLineraClientReturn {
   useEffect(() => {
     if (!clientManager) return;
 
-    // Subscribe to future changes only
+    // Sync state immediately to avoid race condition
+    setState(clientManager.getState());
+
+    // Subscribe to future changes
     const unsubscribe = clientManager.onStateChange((newState) => {
       setState(newState);
     });
@@ -88,12 +120,17 @@ export function useLineraClient(): UseLineraClientReturn {
 
   return {
     state,
+    publicClient: clientManager?.getPublicClient() || null,
+    walletClient: clientManager?.getWalletClient() || null,
     client: clientManager?.getClient() || null,
     wallet: clientManager?.getWallet() || null,
     isInitialized: state.isInitialized,
     isReadOnly: state.mode === ClientMode.READ_ONLY,
     isConnected: state.mode === ClientMode.FULL,
     walletAddress: state.walletAddress,
+    publicAddress: state.publicAddress,
+    publicChainId: state.publicChainId,
+    walletChainId: state.walletChainId,
     chainId: state.chainId,
     canWrite: clientManager?.canWrite() || false,
     error: state.error,

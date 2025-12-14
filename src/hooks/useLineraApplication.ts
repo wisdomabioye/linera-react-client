@@ -24,13 +24,22 @@ export interface UseLineraApplicationReturn {
   /** Can perform write operations */
   canWrite: boolean;
 
-  /** Execute a query on the current chain */
+  /**
+   * @deprecated Use app.publicClient.query() instead for queries.
+   * Execute a query on the current chain
+   */
   query: <T = unknown>(gql: string, blockHash?: string) => Promise<T>;
 
-  /** Execute a mutation on the current chain */
+  /**
+   * @deprecated Use app.publicClient.systemMutate() for system operations or app.walletClient.mutate() for user operations.
+   * Execute a mutation on the current chain
+   */
   mutate: <T = unknown>(gql: string, blockHash?: string) => Promise<T>;
 
-  /** Query any chain by ID (cross-chain query) */
+  /**
+   * @deprecated Use app.publicClient.queryChain() instead for cross-chain queries.
+   * Query any chain by ID (cross-chain query)
+   */
   queryChain: <T = unknown>(chainId: string, gql: string) => Promise<T>;
 }
 

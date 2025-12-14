@@ -201,9 +201,16 @@ export class LineraClientManager implements ILineraClientManager {
 
       if (isSameWallet && this.walletChainId && this.walletClient) {
         logger.info('[ClientManager] Same wallet already connected, reusing wallet chain:', this.walletChainId);
-        this.walletSigner = metamaskSigner;
-        this.mode = ClientMode.FULL;
-        this.notifyStateChange();
+
+        // Only update and notify if signer actually changed
+        const signerChanged = this.walletSigner !== metamaskSigner;
+
+        if (signerChanged) {
+          this.walletSigner = metamaskSigner;
+          this.mode = ClientMode.FULL;
+          this.notifyStateChange();
+        }
+
         return;
       }
 

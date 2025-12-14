@@ -23,7 +23,7 @@ import { logger } from '../../utils/logger';
 export async function loadLineraModule(): Promise<LineraModule> {
   // Use dynamic import with the origin to load from public directory
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const moduleUrl = `${origin}/linera/linera_web.js`;
+  const moduleUrl = `${origin}/linera/linera.js`;
 
   logger.info('Loading Linera module from:', moduleUrl);
 

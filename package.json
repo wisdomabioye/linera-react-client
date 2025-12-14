@@ -75,7 +75,7 @@
     "react-dom": ">=18.0.0"
   },
   "dependencies": {
-    "@linera/client": "0.15.5",
+    "@linera/client": "^0.15.7",
     "@metamask/providers": "^22.1.1",
     "ethers": "^6.15.0"
   },

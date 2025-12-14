@@ -40,6 +40,9 @@ export interface Client {
   // eslint-disable-next-line
   identity(): Promise<any>;
   frontend(): Frontend;
+  // New methods added in @linera/client v0.15.7
+  validatorVersionInfo(): Promise<unknown>;
+  application(id: string): Promise<Application>;
 }
 
 /**
@@ -97,10 +100,7 @@ export interface LineraModule {
 
   /** Wallet class (not directly constructed, obtained from Faucet) */
   Wallet: Wallet;
-
-  /** Frontend class (not directly constructed, obtained from Client) */
-  Frontend: Frontend;
-
+  
   /** Signer interface (implemented by user) */
   Signer: Signer;
 

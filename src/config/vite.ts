@@ -155,7 +155,50 @@ export function withLinera(
         ...(viteConfig.optimizeDeps?.exclude || []),
         '@linera/client',
       ],
+      esbuildOptions: {
+        ...viteConfig.optimizeDeps?.esbuildOptions,
+        target: 'esnext',
+        supported: {
+          bigint: true,
+        },
+      },
     },
+
+    // Configure server
+    server: {
+      ...viteConfig.server,
+      fs: {
+        ...viteConfig.server?.fs,
+        // Allow serving files from node_modules and public
+        allow: [
+          ...(viteConfig.server?.fs?.allow || []),
+          '..',
+          'public',
+        ],
+      },
+      headers: {
+        ...viteConfig.server?.headers,
+        // Ensure COOP/COEP headers are set at server level too
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+        'Cross-Origin-Opener-Policy': 'same-origin',
+      },
+    },
+
+    // Configure worker
+    worker: {
+      format: 'es',
+      plugins: () => [],
+    },
+
+    // Configure WASM and worker assets
+    assetsInclude: [
+      ...(Array.isArray(viteConfig.assetsInclude)
+        ? viteConfig.assetsInclude
+        : viteConfig.assetsInclude
+        ? [viteConfig.assetsInclude]
+        : []),
+      '**/*.wasm',
+    ],
   };
 }
 

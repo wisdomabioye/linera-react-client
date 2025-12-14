@@ -164,7 +164,22 @@ export function LineraProvider({
   useEffect(() => {
     const initClient = async () => {
       try {
-        logger.info('Initializing client...');
+        logger.info('[LineraProvider] Initializing client...');
+
+        // Validate environment before creating client
+        const { validateWasmEnvironment } = await import('../lib/linera/wasm-environment');
+        const envCheck = validateWasmEnvironment();
+
+        if (!envCheck.supported) {
+          throw new Error(
+            `Browser doesn't support required features: ${envCheck.missingFeatures.join(', ')}. ` +
+            `Please use a modern browser with SharedArrayBuffer support.`
+          );
+        }
+
+        if (envCheck.warnings.length > 0) {
+          logger.warn('[LineraProvider] Environment warnings:', envCheck.warnings);
+        }
 
         // Create client manager
         const clientManager = createLineraClient({
@@ -179,11 +194,14 @@ export function LineraProvider({
         await clientManager.initializeReadOnly();
 
         setIsInitialized(true);
-        logger.info('Client initialized successfully');
+        logger.info('[LineraProvider] Client initialized successfully');
       } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        logger.error('Initialization failed:', error);
-        setError(error);
+        // Classify error for better error messages
+        const { classifyWasmError } = await import('../lib/linera/wasm-error-handler');
+        const wasmError = classifyWasmError(err);
+
+        logger.error('[LineraProvider] Initialization failed:', wasmError);
+        setError(wasmError);
       }
     };
 

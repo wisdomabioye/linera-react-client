@@ -15,6 +15,15 @@ export {
 export { ApplicationClientImpl } from './application-client';
 export { TemporarySigner } from './temporary-signer';
 
+// WASM utilities
+export { validateWasmEnvironment, type WasmEnvironmentCheck } from './wasm-environment';
+export {
+  classifyWasmError,
+  executeWithWasmErrorBoundary,
+  WasmError,
+  WasmErrorCode,
+} from './wasm-error-handler';
+
 // Type exports
 export {
   ClientMode,

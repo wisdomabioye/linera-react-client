@@ -122,12 +122,40 @@ export class LineraClientManager implements ILineraClientManager {
     try {
       logger.info('[ClientManager] Initializing read-only mode...');
 
-      // Load Linera module
-      this.lineraModule = await this.loadLinera();
+      // STEP 1: Validate WASM environment
+      const { validateWasmEnvironment } = await import('./wasm-environment');
+      const envCheck = validateWasmEnvironment();
+
+      if (!envCheck.supported) {
+        throw new Error(
+          `WASM environment not supported: ${envCheck.missingFeatures.join(', ')}. ` +
+          `Please ensure your build tool configuration includes the Linera helpers. ` +
+          `For Vite: use withLinera() or lineraPlugin() from 'linera-react-client/config/vite'. ` +
+          `See: https://github.com/wisdomabioye/linera-react-client#quick-start`
+        );
+      }
+
+      if (envCheck.warnings.length > 0) {
+        logger.warn('[ClientManager] Environment warnings:', envCheck.warnings);
+        logger.warn('[ClientManager] This may cause WASM initialization to fail.');
+      }
+
+      // STEP 2: Load Linera module with error boundary
+      const { executeWithWasmErrorBoundary } = await import('./wasm-error-handler');
+
+      this.lineraModule = await executeWithWasmErrorBoundary(
+        () => this.loadLinera(),
+        'Loading Linera module'
+      );
+
       const { Client, Faucet, default: init } = this.lineraModule;
 
-      // Initialize WASM
-      await init();
+      // STEP 3: Initialize WASM with error boundary
+      logger.info('[ClientManager] Initializing WASM...');
+      await executeWithWasmErrorBoundary(
+        () => init(),
+        'WASM initialization'
+      );
 
       // Create faucet
       this.faucet = new Faucet(this.config.faucetUrl);
@@ -154,7 +182,7 @@ export class LineraClientManager implements ILineraClientManager {
       logger.info('[ClientManager] Public chain claimed:', this.publicChainId);
 
       // Create public client
-      // Note: Client constructor may return a Promise in WASM environment
+      logger.info('[ClientManager] Creating public client...');
       const clientInstance = new Client(
         this.publicWallet,
         this.publicSigner,
@@ -169,9 +197,21 @@ export class LineraClientManager implements ILineraClientManager {
       logger.info('[ClientManager] Public chain available for queries and subscriptions');
     } catch (error) {
       this.mode = ClientMode.UNINITIALIZED;
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.notifyStateChange({ error: err });
-      throw new Error(`Failed to initialize read-only client: ${err.message}`);
+
+      // Classify error for better error messages
+      const { classifyWasmError, WasmErrorCode } = await import('./wasm-error-handler');
+      const wasmError = classifyWasmError(error);
+
+      this.notifyStateChange({ error: wasmError });
+
+      // Provide helpful error message with code
+      throw new Error(
+        `Failed to initialize Linera client: ${wasmError.message}\n\n` +
+        `Error code: ${wasmError.code}\n` +
+        (wasmError.code === WasmErrorCode.MEMORY_OUT_OF_BOUNDS
+          ? `\nIf using Vite, ensure you're using withLinera() or lineraPlugin() from 'linera-react-client/config/vite'.`
+          : '')
+      );
     }
   }
 
@@ -316,12 +356,12 @@ export class LineraClientManager implements ILineraClientManager {
 
     try {
       // Get application instance from public client (for queries/subscriptions)
-      const publicApp = await this.publicClient.frontend().application(appId);
+      const publicApp = await this.publicClient.application(appId);
 
       // Get application instance from wallet client if available (for mutations)
       let walletApp: Application | undefined;
       if (this.walletClient) {
-        walletApp = await this.walletClient.frontend().application(appId);
+        walletApp = await this.walletClient.application(appId);
       }
 
       return new ApplicationClientImpl(
@@ -510,7 +550,7 @@ export class LineraClientManager implements ILineraClientManager {
     // Directly load the Linera WebAssembly module from the public directory
     // Using a function wrapper to bypass Turbopack's static analysis
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const moduleUrl = `${origin}/linera/linera_web.js`;
+    const moduleUrl = `${origin}/linera/linera.js`;
 
     logger.info('Loading Linera module from:', moduleUrl);
 

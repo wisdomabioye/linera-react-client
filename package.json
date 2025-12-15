@@ -101,7 +101,9 @@
   },
   "release": {
     "branches": [
-      "main", "v*"
+      "main",
+      {"name": "v*", "channel": "latest"}
+
     ],
     "plugins": [
       "@semantic-release/commit-analyzer",

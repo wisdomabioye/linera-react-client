@@ -165,7 +165,7 @@ export class LineraClientManager implements ILineraClientManager {
       this.mode = ClientMode.READ_ONLY;
       this.notifyStateChange();
 
-      logger.info('[ClientManager] Read-only mode initialized successfully');
+      logger.info('[ClientManager] Read-only mode and system mutation initialized successfully');
       logger.info('[ClientManager] Public chain available for queries and subscriptions');
     } catch (error) {
       this.mode = ClientMode.UNINITIALIZED;

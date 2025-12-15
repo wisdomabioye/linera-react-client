@@ -1,6 +1,6 @@
 {
   "name": "linera-react-client",
-  "version": "1.2.1",
+  "version": "1.2.10",
   "description": "React client library for Linera blockchain with hooks, providers, and wallet management",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

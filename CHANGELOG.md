@@ -1,3 +1,13 @@
+## [1.2.10](https://github.com/wisdomabioye/linera-react-client/compare/v1.2.9...v1.2.10) (2025-12-15)
+
+
+### Bug Fixes
+
+* bug in walletClient query ([6544275](https://github.com/wisdomabioye/linera-react-client/commit/65442757ead216bfb52ec06a4e2a658d56bfdd39))
+* release config ([2373b70](https://github.com/wisdomabioye/linera-react-client/commit/2373b70d4e18460f2169c4e8b2571f733163de2a))
+* release config ([726dc99](https://github.com/wisdomabioye/linera-react-client/commit/726dc99c94f2198c10b39be37b428473c251c667))
+* update release config ([9cc9924](https://github.com/wisdomabioye/linera-react-client/commit/9cc99245f3d82321b3ef46667155fb94cfaf1206))
+
 ## [1.2.1](https://github.com/wisdomabioye/linera-react-client/compare/v1.2.0...v1.2.1) (2025-12-15)
 
 

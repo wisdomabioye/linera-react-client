@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 jobs:
@@ -19,14 +21,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      
-      - name: Delete all local tags (fix cache)
-        run: |
-          git tag -l | xargs -r git tag -d
-          git fetch --tags --force
-      
-      - name: Print release config
-        run: cat package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

@@ -5,7 +5,7 @@
  */
 
 'use client';
-import type { Client, Wallet } from '@linera/client';
+import type { Wallet, Client } from '@linera/client';
 import { type ClientState, type ApplicationClient, ClientMode } from '../lib/linera/types';
 import { useState, useEffect, useCallback } from 'react';
 import { getLineraClientManager } from '../lib/linera/client-manager';
@@ -15,24 +15,7 @@ export interface UseLineraClientReturn {
   /** Current client state */
   state: ClientState;
 
-  /**
-   * Public client for queries and system operations
-   * Always available after initialization (uses temporary signer)
-   * Has access to onNotification() for blockchain event subscriptions
-   */
-  publicClient: Client | null;
-
-  /**
-   * Wallet client for user mutations
-   * Only available when wallet is connected (uses MetaMask signer)
-   * Has access to onNotification() for blockchain event subscriptions
-   */
-  walletClient: Client | null;
-
-  /**
-   * @deprecated Use publicClient or walletClient instead.
-   * Returns wallet client if available, otherwise public client.
-   */
+  /** Base Linera client for low-level access */
   client: Client | null;
 
   /** Wallet instance */
@@ -41,7 +24,7 @@ export interface UseLineraClientReturn {
   /** Is client initialized */
   isInitialized: boolean;
 
-  /** Is in read-only mode (guest) */
+  /** Is in read-only mode (no wallet) */
   isReadOnly: boolean;
 
   /** Is wallet connected (full mode) */
@@ -50,20 +33,11 @@ export interface UseLineraClientReturn {
   /** Connected wallet address */
   walletAddress: string | undefined;
 
-  /** Public address (temporary signer) */
-  publicAddress: string | undefined;
-
-  /** Public chain ID (always available after init) */
-  publicChainId: string | undefined;
-
   /** Wallet chain ID (only when wallet connected) */
   walletChainId: string | undefined;
 
-  /**
-   * @deprecated Use publicChainId or walletChainId from state instead.
-   * Returns walletChainId if available, otherwise publicChainId.
-   */
-  chainId: string | undefined;
+  /** Default chain ID for queries (if configured) */
+  defaultChainId: string | undefined;
 
   /** Can perform write operations */
   canWrite: boolean;
@@ -72,7 +46,7 @@ export interface UseLineraClientReturn {
   error: Error | undefined;
 
   /** Get application client */
-  getApplication: (appId: string) => Promise<ApplicationClient | null>;
+  getApplication: (appId: string, chainId?: string) => Promise<ApplicationClient | null>;
 }
 
 /**
@@ -110,28 +84,24 @@ export function useLineraClient(): UseLineraClientReturn {
   }, [clientManager]);
 
   // Get application client
-  const getApplication = useCallback(async (appId: string): Promise<ApplicationClient | null> => {
+  const getApplication = useCallback(async (appId: string, chainId?: string): Promise<ApplicationClient | null> => {
     if (!clientManager) {
       logger.warn('[useLineraClient] Client manager not initialized');
       return null;
     }
-    return clientManager.getApplication(appId);
+    return clientManager.getApplication(appId, chainId);
   }, [clientManager]);
 
   return {
     state,
-    publicClient: clientManager?.getPublicClient() || null,
-    walletClient: clientManager?.getWalletClient() || null,
     client: clientManager?.getClient() || null,
     wallet: clientManager?.getWallet() || null,
     isInitialized: state.isInitialized,
     isReadOnly: state.mode === ClientMode.READ_ONLY,
     isConnected: state.mode === ClientMode.FULL,
     walletAddress: state.walletAddress,
-    publicAddress: state.publicAddress,
-    publicChainId: state.publicChainId,
     walletChainId: state.walletChainId,
-    chainId: state.chainId,
+    defaultChainId: state.defaultChainId,
     canWrite: clientManager?.canWrite() || false,
     error: state.error,
     getApplication,

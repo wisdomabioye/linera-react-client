@@ -41,11 +41,6 @@ export {
   type Wallet,
   type Signer,
   type Application,
-  type LineraModule,
-  type ClientConstructor,
-  type FaucetConstructor,
-  type Frontend,
-  type InitFunction,
 } from './lib/linera';
 
 // Signer Options

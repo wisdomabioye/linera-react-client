@@ -29,12 +29,3 @@ export {
   type Signer,
   type Application,
 } from './types';
-
-// Linera WASM module types
-export type {
-  LineraModule,
-  ClientConstructor,
-  FaucetConstructor,
-  Frontend,
-  InitFunction,
-} from './linera-types';

@@ -25,9 +25,6 @@ export interface UseWalletConnectionReturn {
   /** Connected wallet address */
   address: string | undefined;
 
-  /** Claimed chain ID */
-  chainId: string | undefined;
-
   /** Connection error */
   error: Error | undefined;
 
@@ -60,7 +57,7 @@ export interface UseWalletConnectionReturn {
  */
 export function useWalletConnection(): UseWalletConnectionReturn {
   const clientManager = getLineraClientManager();
-  const { isConnected, walletAddress, chainId, error: clientError } = useLineraClient();
+  const { isConnected, walletAddress, error: clientError } = useLineraClient();
 
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<Error | undefined>(clientError);
@@ -171,7 +168,6 @@ export function useWalletConnection(): UseWalletConnectionReturn {
     isConnected,
     isConnecting,
     address: walletAddress,
-    chainId,
     error,
     connect,
     disconnect,

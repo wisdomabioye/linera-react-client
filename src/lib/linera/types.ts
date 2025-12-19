@@ -4,7 +4,7 @@
  * Core type definitions for Linera client management
  */
 
-import type { Client, Wallet, Signer, Application } from '@linera/client';
+import type { Client, Faucet, Wallet, Signer, Application } from '@linera/client';
 
 /**
  * Client operational modes
@@ -37,28 +37,13 @@ export interface ClientState {
   walletAddress?: string;
 
   /**
-   * Public address - temporary address used for public chain
-   * Always available after initialization
-   */
-  publicAddress?: string;
-
-  /**
-   * Public chain ID - always available after initialization
-   * Used for queries and cross-chain subscriptions
-   */
-  publicChainId?: string;
-
-  /**
    * Wallet chain ID - only when wallet is connected
-   * Used for user mutations
+   * Used for paying gas fees on mutations
    */
   walletChainId?: string;
 
-  /**
-   * @deprecated Use publicChainId or walletChainId instead
-   * Returns walletChainId if available, otherwise publicChainId
-   */
-  chainId?: string;
+  /** Default chain ID for queries (if configured) */
+  defaultChainId?: string;
 
   /** Faucet URL being used */
   faucetUrl?: string;
@@ -115,6 +100,13 @@ export interface ClientConfig {
   /** Linera faucet endpoint URL */
   faucetUrl: string;
 
+  /**
+   * Default chain ID for application queries
+   * Optional - if provided, getApplication(appId) will use this chain
+   * If not provided, chainId must be specified in each getApplication call
+   */
+  defaultChainId?: string;
+
   /** Network environment */
   network?: 'mainnet' | 'testnet' | 'local';
 
@@ -123,12 +115,6 @@ export interface ClientConfig {
 
   /** Skip processing inbox on client creation */
   skipProcessInbox?: boolean;
-
-  /**
-   * Read-only wallet configuration
-   * Controls how temporary wallets are created for guest/read-only mode
-   */
-  readOnlyWallet?: ReadOnlyWalletConfig;
 }
 
 /**
@@ -157,89 +143,48 @@ export interface MutateOptions {
 }
 
 /**
- * Public client interface - operations that don't require user wallet
- */
-export interface PublicClient {
-  /** Execute GraphQL query on public chain */
-  query<T = unknown>(gql: string, blockHash?: string): Promise<T>;
-
-  /** Query any chain by ID via HTTP */
-  queryChain<T = unknown>(chainId: string, gql: string): Promise<T>;
-
-  /** Get connected public address */
-  getAddress(): string;
-
-  /** Get public chain ID */
-  getChainId(): string;
-
-  /** Execute system mutations (auto-signed with temporary wallet, no user prompt) */
-  systemMutate<T = unknown>(gql: string, blockHash?: string): Promise<T>;
-}
-
-/**
- * Wallet client interface - operations requiring user wallet
- */
-export interface WalletClient {
-  /** Execute GraphQL query on wallet chain */
-  query<T = unknown>(gql: string, blockHash?: string): Promise<T>;
-
-  /** Query any chain by ID via HTTP */
-  queryChain<T = unknown>(chainId: string, gql: string): Promise<T>;
-
-  /** Get connected wallet address */
-  getAddress(): string;
-
-  /** Get wallet chain ID */
-  getChainId(): string;
-
-  /** Execute user mutations (requires wallet signature) */
-  mutate<T = unknown>(gql: string, blockHash?: string): Promise<T>;
-}
-
-/**
- * Application query/mutation wrapper interface
+ * Application client interface for interacting with Linera applications
  */
 export interface ApplicationClient {
   /** Application ID */
   readonly appId: string;
 
-  /**
-   * @deprecated Use publicClient or walletClient instead
-   * Underlying Linera application instance (public chain)
-   */
-  readonly application: Application;
+  /** Chain ID being queried */
+  readonly chainId: string;
 
   /**
-   * Public client for queries and system operations
-   * Always available (uses public chain with temporary signer)
-   */
-  readonly publicClient: PublicClient;
-
-  /**
-   * Wallet client for user mutations
-   * Only available when wallet is connected (uses wallet chain)
-   */
-  readonly walletClient?: WalletClient;
-
-  /**
-   * @deprecated Use publicClient.query() instead
-   * Execute a GraphQL query
+   * Execute GraphQL query on the application chain
+   * Queries are free and don't require a wallet
    */
   query<T = unknown>(gql: string, blockHash?: string): Promise<T>;
 
   /**
-   * @deprecated Use publicClient.systemMutate() or walletClient.mutate() instead
-   * Execute a GraphQL mutation (requires full client or operationType: SYSTEM)
-   */
-  mutate<T = unknown>(gql: string, options?: MutateOptions | string): Promise<T>;
-
-  /**
-   * @deprecated Use publicClient.queryChain() instead
-   * Query any chain by ID via HTTP (no need to claim it)
-   * @param chainId - Target chain ID to query
-   * @param gql - GraphQL query string
+   * Query any chain by ID via HTTP
+   * Useful for cross-chain queries
    */
   queryChain<T = unknown>(chainId: string, gql: string): Promise<T>;
+
+  /**
+   * Execute mutation on the application
+   * Requires connected wallet to sign and pay gas fees
+   * @throws Error if wallet is not connected
+   */
+  mutate<T = unknown>(gql: string, blockHash?: string): Promise<T>;
+
+  /**
+   * Get connected wallet address (if wallet is connected)
+   */
+  getWalletAddress(): string | undefined;
+
+  /**
+   * Get wallet chain ID (if wallet is connected)
+   */
+  getWalletChainId(): string | undefined;
+
+  /**
+   * Check if wallet is connected and mutations are possible
+   */
+  canMutate(): boolean;
 }
 
 /**
@@ -254,26 +199,24 @@ export interface ILineraClientManager {
   /** Get current client state */
   getState(): ClientState;
 
-  /** Get raw Linera client instance */
-  getClient(): Client | Promise<Client> | null;
-
-  /** Get current wallet instance */
-  getWallet(): Wallet | null;
-
-  /** Initialize in read-only mode */
-  initializeReadOnly(): Promise<void>;
+  /** Initialize client (loads WASM module) */
+  initialize(): Promise<void>;
 
   /** Connect MetaMask wallet */
   connectWallet(signer: Signer): Promise<void>;
 
-  /** Disconnect wallet (revert to read-only) */
+  /** Disconnect wallet */
   disconnectWallet(): Promise<void>;
 
   /** Switch to different wallet */
   switchWallet(newSigner: Signer): Promise<void>;
 
-  /** Get application interface */
-  getApplication(appId: string): Promise<ApplicationClient | null>;
+  /**
+   * Get application interface
+   * @param appId - Application ID
+   * @param chainId - Optional chain ID (uses defaultChainId if not provided)
+   */
+  getApplication(appId: string, chainId?: string): Promise<ApplicationClient | null>;
 
   /** Check if client can perform write operations */
   canWrite(): boolean;
@@ -285,10 +228,68 @@ export interface ILineraClientManager {
   destroy(): Promise<void>;
 
   /**
-   * reinitialize client, useful when 'runtime' error occur
+   * Reinitialize client, useful when 'runtime' error occur
    */
   reinit(): Promise<void>;
 }
+
+
+
+/**
+ * Linera WASM Module Types
+ *
+ * Type definitions for the Linera WebAssembly module loaded from public/linera/
+ * These types match the interface defined in public/linera/linera_web.d.ts
+ */
+
+/**
+ * Client constructor signature
+ */
+export interface ClientConstructor {
+  new (wallet: Wallet, signer: Signer, skip_process_inbox: boolean): Client;
+}
+
+/**
+ * Faucet constructor signature
+ */
+export interface FaucetConstructor {
+  new (url: string): Faucet;
+}
+
+/**
+ * WASM initialization function
+ */
+export type InitFunction = (module_or_path?: string, memory?: WebAssembly.Memory) => Promise<unknown>;
+
+/**
+ * Complete Linera WASM module interface
+ */
+export interface LineraModule {
+  /** WASM initialization function (default export) */
+  default: InitFunction;
+
+  /** Client constructor */
+  Client: ClientConstructor;
+
+  /** Faucet constructor */
+  Faucet: FaucetConstructor;
+
+  /** Application class (not directly constructed, obtained from Frontend) */
+  Application: Application;
+
+  /** Wallet class (not directly constructed, obtained from Faucet) */
+  Wallet: Wallet;
+
+  /** Signer interface (implemented by user) */
+  Signer: Signer;
+
+  /** Main entry point */
+  main(): void;
+
+  /** Web worker entry point */
+  wasm_thread_entry_point(ptr: number): Promise<void>;
+}
+
 
 /**
  * Re-export Linera types for convenience

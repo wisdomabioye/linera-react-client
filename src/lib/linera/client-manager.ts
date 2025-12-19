@@ -2,9 +2,9 @@
  * Linera Client Manager
  *
  * Manages the lifecycle of Linera client instances, handling:
- * - Read-only mode with temporary wallets (guest)
- * - Full mode with MetaMask wallets (authenticated)
- * - Wallet switching and chain claiming
+ * - Initialization (WASM loading)
+ * - Wallet connection and management
+ * - Application client creation with flexible chain routing
  */
 
 import type {
@@ -12,10 +12,10 @@ import type {
   Wallet,
   Signer,
   Faucet,
-  Application,
 } from '@linera/client';
 
 import {
+  LineraModule,
   ClientMode,
   ClientState,
   ClientConfig,
@@ -23,10 +23,10 @@ import {
   StateChangeCallback,
   ILineraClientManager,
 } from './types';
-import type { LineraModule } from './linera-types';
 import { TemporarySigner } from './temporary-signer';
 import { ApplicationClientImpl } from './application-client';
 import { logger } from '../../utils/logger';
+import { createRequire } from 'module';
 
 type SignerWithAddress = Signer & {address: () => Promise<string>}
 
@@ -34,16 +34,11 @@ type SignerWithAddress = Signer & {address: () => Promise<string>}
  * Main client manager implementation
  */
 export class LineraClientManager implements ILineraClientManager {
-  // Public chain resources (temporary signer, always available after initialization)
-  private publicClient: Client | null = null;
-  private publicWallet: Wallet | null = null;
-  private publicSigner: SignerWithAddress | null = null;
-  private publicChainId: string | null = null;
-  private publicAddress: string | null = null;
+  // Core Linera client (for chain access)
+  private client: Client | null = null;
+  private wallet: Wallet | null = null;
 
-  // Wallet chain resources (MetaMask signer, only when wallet connected)
-  private walletClient: Client | null = null;
-  private walletWallet: Wallet | null = null;
+  // Wallet resources (only when wallet connected)
   private walletSigner: SignerWithAddress | null = null;
   private walletChainId: string | null = null;
   private walletAddress: string | null = null;
@@ -67,117 +62,85 @@ export class LineraClientManager implements ILineraClientManager {
       isInitialized: this.mode !== ClientMode.UNINITIALIZED,
       hasWallet: this.mode === ClientMode.FULL,
       walletAddress: this.walletAddress || undefined,
-      publicAddress: this.publicAddress || undefined,
-      publicChainId: this.publicChainId || undefined,
       walletChainId: this.walletChainId || undefined,
-      // Deprecated chainId - returns walletChainId if available, otherwise publicChainId
-      chainId: this.walletChainId || this.publicChainId || undefined,
+      defaultChainId: this.config.defaultChainId,
       faucetUrl: this.config.faucetUrl,
     };
   }
 
   /**
-   * Get public client (for queries and system operations)
-   */
-  getPublicClient(): Client | null {
-    return this.publicClient;
-  }
-
-  /**
-   * Get wallet client (for user mutations)
-   */
-  getWalletClient(): Client | null {
-    return this.walletClient;
-  }
-
-  /**
-   * @deprecated Use getPublicClient() or getWalletClient() instead
-   * Get raw Linera client (returns wallet client if available, otherwise public client)
+   * Get the base Linera client for low-level access
+   * Use getApplication() for most operations
    */
   getClient(): Client | null {
-    return this.walletClient || this.publicClient;
+    return this.client;
   }
 
   /**
-   * Get wallet instance (returns wallet wallet if available, otherwise public wallet)
+   * Get wallet instance
    */
   getWallet(): Wallet | null {
-    return this.walletWallet || this.publicWallet;
+    return this.wallet;
   }
 
   /**
-   * Initialize in read-only mode with temporary wallet
-   * Claims a PUBLIC chain for queries and cross-chain subscriptions
+   * Initialize client (loads WASM, creates faucet, wallet, and base client)
+   * After this, client is ready for queries and wallet connection
    */
-  async initializeReadOnly(): Promise<void> {
-    if (typeof window === 'undefined') {
-      throw new Error('Linera client can only be initialized on the client side');
-    }
-
+  async initialize(): Promise<void> {
     if (this.mode !== ClientMode.UNINITIALIZED) {
       logger.debug('[ClientManager] Already initialized');
       return;
     }
 
     try {
-      logger.info('[ClientManager] Initializing read-only mode...');
+      logger.info('[ClientManager] Initializing Linera client...');
 
-      // Load Linera module
+      // 1. Load Linera module
       this.lineraModule = await this.loadLinera();
-      const { Client, Faucet, default: init } = this.lineraModule;
 
-      // Initialize WASM
-      await init();
-
-      // Create faucet
-      this.faucet = new Faucet(this.config.faucetUrl);
-
-      if (!this.faucet) {
-        logger.error('[ClientManager] Failed to instantiate Faucet');
-        throw new Error('[ClientManager] Failed to instantiate Faucet');
+      if (!this.lineraModule) {
+        throw new Error('Linera module failed to load');
       }
 
-      // Create public wallet from faucet
-      this.publicWallet = await this.faucet.createWallet();
+      const { Client, Faucet, default: init } = this.lineraModule;
 
-      // Create temporary signer for public chain
-      const tempSigner = new TemporarySigner(this.config.readOnlyWallet);
-      this.publicSigner = tempSigner;
+      // 2. Initialize WASM
+      logger.debug('[ClientManager] Loading WASM...');
+      await init();
 
-      // Get temporary address
-      const tempOwner = await tempSigner.address();
-      this.publicAddress = tempOwner;
+      // 3. Create faucet
+      logger.debug('[ClientManager] Creating faucet...');
+      this.faucet = new Faucet(this.config.faucetUrl);
 
-      // Claim PUBLIC chain for queries and subscriptions
-      logger.info('[ClientManager] Claiming public chain for queries/subscriptions...');
-      this.publicChainId = await this.faucet.claimChain(this.publicWallet, tempOwner);
-      logger.info('[ClientManager] Public chain claimed:', this.publicChainId);
+      // 4. Create wallet
+      logger.debug('[ClientManager] Creating wallet...');
+      this.wallet = await this.faucet.createWallet();
 
-      // Create public client
-      // Note: Client constructor may return a Promise in WASM environment
+      // 5. Create base client with dummy signer
+      logger.debug('[ClientManager] Creating client...');
+      const dummySigner = new TemporarySigner();
       const clientInstance = new Client(
-        this.publicWallet,
-        this.publicSigner,
+        this.wallet,
+        dummySigner,
         this.config.skipProcessInbox || false
       );
-      this.publicClient = await Promise.resolve(clientInstance);
+      this.client = await Promise.resolve(clientInstance);
 
       this.mode = ClientMode.READ_ONLY;
       this.notifyStateChange();
 
-      logger.info('[ClientManager] Read-only mode and system mutation initialized successfully');
-      logger.info('[ClientManager] Public chain available for queries and subscriptions');
+      logger.info('[ClientManager] Client initialized successfully');
     } catch (error) {
       this.mode = ClientMode.UNINITIALIZED;
       const err = error instanceof Error ? error : new Error(String(error));
       this.notifyStateChange({ error: err });
-      throw new Error(`Failed to initialize read-only client: ${err.message}`);
+      throw new Error(`Failed to initialize client: ${err.message}`);
     }
   }
 
   /**
-   * Connect MetaMask wallet (claims WALLET chain for user mutations)
-   * Public chain remains active for queries and subscriptions
+   * Connect MetaMask wallet (claims wallet chain for gas fees)
    */
   async connectWallet(metamaskSigner: SignerWithAddress): Promise<void> {
     if (typeof window === 'undefined') {
@@ -187,77 +150,44 @@ export class LineraClientManager implements ILineraClientManager {
     try {
       logger.info('[ClientManager] Connecting wallet...');
 
-      // Ensure we're initialized (public chain exists)
+      // Ensure we're initialized
       if (this.mode === ClientMode.UNINITIALIZED) {
-        await this.initializeReadOnly();
+        await this.initialize();
       }
 
       // Get MetaMask address
       const owner = await metamaskSigner.address();
-      logger.info('[ClientManager] MetaMask address:', owner);
+      logger.info('[ClientManager] Wallet address:', owner);
 
       // Check if same wallet already connected
       const isSameWallet = this.walletAddress?.toLowerCase() === owner.toLowerCase();
 
-      if (isSameWallet && this.walletChainId && this.walletClient) {
-        logger.info('[ClientManager] Same wallet already connected, reusing wallet chain:', this.walletChainId);
+      if (isSameWallet && this.walletChainId) {
+        logger.info('[ClientManager] Same wallet already connected, reusing chain:', this.walletChainId);
 
-        // Only update and notify if signer actually changed
-        const signerChanged = this.walletSigner !== metamaskSigner;
-
-        if (signerChanged) {
+        // Only update signer if changed
+        if (this.walletSigner !== metamaskSigner) {
           this.walletSigner = metamaskSigner;
-          this.mode = ClientMode.FULL;
           this.notifyStateChange();
         }
 
         return;
       }
 
-      // Cleanup old wallet client if switching wallets
-      if (this.walletClient) {
-        (this.walletClient).free();
-        this.walletClient = null;
-      }
-      if (this.walletWallet) {
-        this.walletWallet.free();
-        this.walletWallet = null;
-      }
-
-      // Create wallet wallet from faucet
-      if (!this.faucet) {
-        const { Faucet, default: init } = this.lineraModule as LineraModule;
-        await init();
-        this.faucet = new Faucet(this.config.faucetUrl);
-      }
-
-      this.walletWallet = await this.faucet!.createWallet();
-
-      // Claim WALLET chain for user mutations
-      logger.info('[ClientManager] Claiming wallet chain for user mutations...');
-      this.walletChainId = await this.faucet!.claimChain(this.walletWallet, owner);
+      // Claim wallet chain for gas fees
+      logger.info('[ClientManager] Claiming wallet chain for gas fees...');
+      this.walletChainId = await this.faucet!.claimChain(this.wallet!, owner);
       logger.info('[ClientManager] Wallet chain claimed:', this.walletChainId);
 
       // Update wallet state
       this.walletSigner = metamaskSigner;
       this.walletAddress = owner;
 
-      // Create wallet client
-      const { Client } = this.lineraModule as LineraModule;
-      // Note: Client constructor may return a Promise in WASM environment
-      const clientInstance = new Client(
-        this.walletWallet as Wallet,
-        this.walletSigner,
-        this.config.skipProcessInbox || false
-      );
-      this.walletClient = await Promise.resolve(clientInstance);
-
       this.mode = ClientMode.FULL;
       this.notifyStateChange();
 
-      logger.info('[ClientManager] Wallet connected successfully');
-      logger.info('[ClientManager] Public chain (queries/subscriptions):', this.publicChainId);
-      logger.info('[ClientManager] Wallet chain (user mutations):', this.walletChainId);
+      logger.info('[ClientManager] Wallet connected:', owner);
+      logger.info('[ClientManager] Wallet chain (for gas):', this.walletChainId);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       this.notifyStateChange({ error: err });
@@ -266,7 +196,7 @@ export class LineraClientManager implements ILineraClientManager {
   }
 
   /**
-   * Disconnect wallet (remove wallet chain, keep public chain active)
+   * Disconnect wallet
    */
   async disconnectWallet(): Promise<void> {
     if (this.mode !== ClientMode.FULL) {
@@ -276,32 +206,16 @@ export class LineraClientManager implements ILineraClientManager {
 
     logger.info('[ClientManager] Disconnecting wallet...');
 
-    // Cleanup ONLY wallet chain resources (keep public chain!)
-    if (this.walletClient) {
-      (this.walletClient).free();
-    }
-    if (this.walletWallet) {
-      this.walletWallet.free();
-    }
-
-    // Clear ONLY wallet state
-    this.walletClient = null;
-    this.walletWallet = null;
+    // Clear wallet state
     this.walletSigner = null;
     this.walletChainId = null;
     this.walletAddress = null;
 
-    // Public chain resources remain UNTOUCHED
-    // this.publicClient - still active
-    // this.publicWallet - still active
-    // this.publicChainId - still active
-
-    // Revert to READ_ONLY mode (public chain still active)
+    // Revert to READ_ONLY mode
     this.mode = ClientMode.READ_ONLY;
     this.notifyStateChange();
 
     logger.info('[ClientManager] Wallet disconnected');
-    logger.info('[ClientManager] Public chain still active:', this.publicChainId);
   }
 
   /**
@@ -313,34 +227,39 @@ export class LineraClientManager implements ILineraClientManager {
   }
 
   /**
-   * Get application client interface with dual-chain support
+   * Get application client interface
+   * @param appId - Application ID
+   * @param chainId - Optional chain ID (uses defaultChainId if not provided)
    */
-  async getApplication(appId: string): Promise<ApplicationClient | null> {
-    if (!this.publicClient) {
+  async getApplication(appId: string, chainId?: string): Promise<ApplicationClient | null> {
+    if (this.mode === ClientMode.UNINITIALIZED) {
       logger.warn('[ClientManager] Client not initialized');
       return null;
     }
 
-    try {
-      // Get application instance from public client (for queries/subscriptions)
-      const publicApp = await this.publicClient.frontend().application(appId);
+    // Determine which chainId to use
+    const targetChainId = chainId || this.config.defaultChainId;
 
-      // Get application instance from wallet client if available (for mutations)
-      let walletApp: Application | undefined;
-      if (this.walletClient) {
-        walletApp = await this.walletClient.frontend().application(appId);
-      }
+    if (!targetChainId) {
+      throw new Error(
+        'No chainId provided and no defaultChainId configured. ' +
+        'Either pass chainId parameter or set defaultChainId in config.'
+      );
+    }
+
+    try {
+      // Use new API: client.chain(chainId).application(appId)
+      const chain = await this.client!.chain(targetChainId);
+      const app = await chain.application(appId);
 
       return new ApplicationClientImpl(
         appId,
-        publicApp,
-        walletApp,
-        this.mode === ClientMode.FULL,
-        this.config.faucetUrl,
-        this.publicChainId || undefined,
+        targetChainId,
+        app,
+        this.walletSigner,
         this.walletChainId || undefined,
         this.walletAddress || undefined,
-        this.publicAddress || undefined,
+        this.config.faucetUrl
       );
     } catch (error) {
       logger.error('[ClientManager] Failed to get application:', error);
@@ -368,35 +287,31 @@ export class LineraClientManager implements ILineraClientManager {
   }
 
   /**
-   * Destroy and cleanup both chains
+   * Destroy and cleanup client resources
    */
   async destroy(): Promise<void> {
     logger.info('[ClientManager] Destroying client...');
-    
-    // Cleanup public chain
-    if (this.publicClient) {
-      (this.publicClient).free();
-    }
-    if (this.publicWallet) {
-      this.publicWallet.free();
+
+    // Cleanup client
+    if (this.client) {
+      try {
+        (this.client as any).free?.();
+      } catch (e) {
+        logger.debug('[ClientManager] Client free failed:', e);
+      }
     }
 
-    // Cleanup wallet chain
-    if (this.walletClient) {
-      (this.walletClient).free();
-    }
-    if (this.walletWallet) {
-      this.walletWallet.free();
+    // Cleanup wallet
+    if (this.wallet) {
+      try {
+        this.wallet.free();
+      } catch (e) {
+        logger.debug('[ClientManager] Wallet free failed:', e);
+      }
     }
 
-    this.publicClient = null;
-    this.publicWallet = null;
-    this.publicSigner = null;
-    this.publicChainId = null;
-    this.publicAddress = null;
-
-    this.walletClient = null;
-    this.walletWallet = null;
+    this.client = null;
+    this.wallet = null;
     this.walletSigner = null;
     this.walletChainId = null;
     this.walletAddress = null;
@@ -408,124 +323,113 @@ export class LineraClientManager implements ILineraClientManager {
   }
 
   /**
-   * Robust reinit: attempt a full deterministic restart.
-   *
+   * Reinitialize client after error
    * Strategy:
-   * 1. Try a best-effort destroy (don't let its errors stop progress).
-   * 2. Force-clear any lingering references (free() where available).
-   * 3. Reload the linera module and init the wasm (init()).
-   * 4. Recreate public client (and reconnect wallet signer if present).
-   * 5. If anything irrecoverable happens, perform a hard reload.
+   * 1. Best-effort destroy
+   * 2. Reload WASM module
+   * 3. Reinitialize
+   * 4. Reconnect wallet if was connected
    */
   async reinit(): Promise<void> {
-    logger.info('[ClientManager] reinit(): starting full restart');
+    logger.info('[ClientManager] Reinitializing...');
 
-    // Preserve wallet signer so we can try to reconnect it after reinit
+    // Preserve wallet signer for reconnection
     const previousWalletSigner = this.walletSigner;
     const hadWallet = !!previousWalletSigner;
 
-    // 1) Best-effort destroy but never abort on error
+    // Best-effort destroy
     try {
-      // destroy() may throw if wasm is corrupted — catch and proceed
       await this.destroy();
     } catch (destroyErr) {
-      logger.warn('[ClientManager] reinit(): destroy() threw, continuing anyway', destroyErr);
-      // proceed to forced cleanup below
+      logger.warn('[ClientManager] Destroy failed during reinit:', destroyErr);
     }
 
-    // 2) Forced cleanup of any lingering references (ignore errors)
-    try {
-      if (this.publicClient) {
-        try { (this.publicClient as any).free?.(); } catch (e) { logger.debug('[ClientManager] publicClient.free() failed', e); }
-      }
-    } catch (e) { logger.debug('[ClientManager] ignoring publicClient free error', e); }
-    try {
-      if (this.publicWallet) { try { (this.publicWallet as any).free?.(); } catch (e) { logger.debug('[ClientManager] publicWallet.free() failed', e); } }
-    } catch (e) { logger.debug('[ClientManager] ignoring publicWallet free error', e); }
-
-    // Clear internal state references to ensure deterministic init path
-    this.publicClient = null;
-    this.publicWallet = null;
-    this.publicSigner = null;
-    this.publicChainId = null;
-    this.publicAddress = null;
-
-    this.walletClient = null;
-    this.walletWallet = null;
-    this.walletSigner = previousWalletSigner ?? null; // keep signer for reconnect attempt
+    // Force-clear state
+    this.client = null;
+    this.wallet = null;
+    this.walletSigner = null;
     this.walletChainId = null;
     this.walletAddress = null;
-
     this.mode = ClientMode.UNINITIALIZED;
     this.notifyStateChange();
 
-    // 3) (Re)load linera module and init WASM
+    // Reload WASM module
     try {
-      // Reload module to get a fresh vm if possible
       this.lineraModule = await this.loadLinera();
       const { default: init } = this.lineraModule as LineraModule;
-
-      // init() may itself throw if the wasm is unhealthy; wrap it
       await init();
     } catch (initErr) {
-      logger.error('[ClientManager] reinit(): wasm init failed', initErr);
-      // fallback to full reload of the page as last resort
-      try {
-        logger.info('[ClientManager] reinit(): falling back to window.location.reload()');
-        window.location.reload();
-        return;
-      } catch {
-        throw initErr;
+      logger.error('[ClientManager] WASM init failed:', initErr);
+      // Fallback to page reload
+      if (typeof window !== 'undefined') {
+        try {
+          logger.info('[ClientManager] Falling back to page reload');
+          window.location.reload();
+          return;
+        } catch {
+          throw initErr;
+        }
       }
+      throw initErr;
     }
 
-    // 4) Recreate public chain resources by calling initializeReadOnly()
+    // Reinitialize
     try {
-      await this.initializeReadOnly();
-    } catch (initReadOnlyErr) {
-      logger.error('[ClientManager] reinit(): initializeReadOnly() failed', initReadOnlyErr);
-      // hard reload as fallback
-      try {
-        window.location.reload();
-        return;
-      } catch {
-        throw initReadOnlyErr;
+      await this.initialize();
+    } catch (initErr) {
+      logger.error('[ClientManager] Initialization failed:', initErr);
+      if (typeof window !== 'undefined') {
+        try {
+          window.location.reload();
+          return;
+        } catch {
+          throw initErr;
+        }
       }
+      throw initErr;
     }
 
-    // 5) If we previously had a wallet signer, try to reconnect it (best-effort)
+    // Reconnect wallet if was connected
     if (hadWallet && previousWalletSigner) {
       try {
         await this.connectWallet(previousWalletSigner);
       } catch (walletErr) {
-        // Keep public client running; notify listeners about partial failure.
-        logger.warn('[ClientManager] reinit(): reconnecting wallet failed (public client active)', walletErr);
-        this.notifyStateChange({ error: walletErr instanceof Error ? walletErr : new Error(String(walletErr)) });
+        logger.warn('[ClientManager] Wallet reconnection failed:', walletErr);
+        this.notifyStateChange({
+          error: walletErr instanceof Error ? walletErr : new Error(String(walletErr))
+        });
       }
     }
 
-    // Final state notification
     this.notifyStateChange();
-    logger.info('[ClientManager] reinit(): completed successfully (or recovered to public client)');
+    logger.info('[ClientManager] Reinitialization complete');
   }
 
 
   /**
    * Load Linera module
    */
-  private async loadLinera(): Promise<LineraModule> {
-    // Directly load the Linera WebAssembly module from the public directory
+  private async loadLinera(): Promise<LineraModule | null> {
+    // Directly load the Linera WebAssembly module from the public directory or node_module folder
     // Using a function wrapper to bypass Turbopack's static analysis
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const moduleUrl = `${origin}/linera/linera_web.js`;
+    
+    let lineraModule: LineraModule | null = null;
 
-    logger.info('Loading Linera module from:', moduleUrl);
+    if (typeof window !== 'undefined') {
+      const origin = window.location.origin;
+      const moduleUrl = `${origin}/linera/linera.js`;
+      logger.info('Loading Linera module from:', moduleUrl);
 
-    // Use Function constructor to create dynamic import that Turbopack can't analyze
-    // This bypasses static analysis while still loading the module at runtime
-    const loadModule = new Function('url', 'return import(url)');
-    const lineraModule = await loadModule(moduleUrl) as LineraModule;
+      // Use Function constructor to create dynamic import that Turbopack can't analyze
+      // This bypasses static analysis while still loading the module at runtime
+      const loadModule = new Function('url', 'return import(url)');
+      lineraModule = await loadModule(moduleUrl) as LineraModule;
 
+    } else {
+      const require = createRequire(import.meta.url)
+      lineraModule = require('@linera/client')
+    }
+    
     logger.info('Linera module loaded:', lineraModule);
 
     return lineraModule;

@@ -4,7 +4,7 @@
  * Core type definitions for Linera client management
  */
 
-import type { Client, Faucet, Wallet, Signer, Application } from '@linera/client';
+import type { Client, Faucet, Wallet, Signer, Application, initialize } from '@linera/client';
 
 /**
  * Client operational modes
@@ -118,31 +118,6 @@ export interface ClientConfig {
 }
 
 /**
- * Operation type for mutations
- */
-export enum OperationType {
-  /** Pure read operations (queries) */
-  READ = 'read',
-
-  /** System operations auto-signed with temporary wallet (subscriptions, heartbeat) */
-  SYSTEM = 'system',
-
-  /** User-initiated operations requiring wallet signature */
-  USER = 'user',
-}
-
-/**
- * Options for mutation operations
- */
-export interface MutateOptions {
-  /** Operation type - defaults to USER */
-  operationType?: OperationType;
-
-  /** Optional block hash */
-  blockHash?: string;
-}
-
-/**
  * Application client interface for interacting with Linera applications
  */
 export interface ApplicationClient {
@@ -157,13 +132,6 @@ export interface ApplicationClient {
    * Queries are free and don't require a wallet
    */
   query<T = unknown>(gql: string, blockHash?: string): Promise<T>;
-
-  /**
-   * Query any chain by ID via HTTP
-   * Useful for cross-chain queries
-   */
-  queryChain<T = unknown>(chainId: string, gql: string): Promise<T>;
-
   /**
    * Execute mutation on the application
    * Requires connected wallet to sign and pay gas fees
@@ -243,51 +211,30 @@ export interface ILineraClientManager {
  */
 
 /**
- * Client constructor signature
- */
-export interface ClientConstructor {
-  new (wallet: Wallet, signer: Signer, skip_process_inbox: boolean): Client;
-}
-
-/**
- * Faucet constructor signature
- */
-export interface FaucetConstructor {
-  new (url: string): Faucet;
-}
-
-/**
- * WASM initialization function
- */
-export type InitFunction = (module_or_path?: string, memory?: WebAssembly.Memory) => Promise<unknown>;
-
-/**
  * Complete Linera WASM module interface
  */
 export interface LineraModule {
   /** WASM initialization function (default export) */
-  default: InitFunction;
+  initialize: typeof initialize;
+  default: typeof initialize;
 
   /** Client constructor */
-  Client: ClientConstructor;
+  Client: typeof Client;
 
   /** Faucet constructor */
-  Faucet: FaucetConstructor;
+  Faucet: typeof Faucet;
 
   /** Application class (not directly constructed, obtained from Frontend) */
-  Application: Application;
+  Application: typeof Application;
 
   /** Wallet class (not directly constructed, obtained from Faucet) */
-  Wallet: Wallet;
+  Wallet: typeof Wallet;
 
   /** Signer interface (implemented by user) */
-  Signer: Signer;
+  // Signer: Signer;
 
   /** Main entry point */
   main(): void;
-
-  /** Web worker entry point */
-  wasm_thread_entry_point(ptr: number): Promise<void>;
 }
 
 

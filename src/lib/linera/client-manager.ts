@@ -13,7 +13,7 @@ import type {
   Signer,
   Faucet,
 } from '@linera/client';
-
+// import * as _lineraDefault from '@linera/client';
 import {
   LineraModule,
   ClientMode,
@@ -26,7 +26,6 @@ import {
 import { TemporarySigner } from './temporary-signer';
 import { ApplicationClientImpl } from './application-client';
 import { logger } from '../../utils/logger';
-import { createRequire } from 'module';
 
 type SignerWithAddress = Signer & {address: () => Promise<string>}
 
@@ -123,8 +122,11 @@ export class LineraClientManager implements ILineraClientManager {
       const clientInstance = new Client(
         this.wallet,
         dummySigner,
-        this.config.skipProcessInbox || false
+        {
+          skipProcessInbox: this.config.skipProcessInbox || false
+        }
       );
+      
       this.client = await Promise.resolve(clientInstance);
 
       this.mode = ClientMode.READ_ONLY;
@@ -249,8 +251,13 @@ export class LineraClientManager implements ILineraClientManager {
 
     try {
       // Use new API: client.chain(chainId).application(appId)
-      const chain = await this.client!.chain(targetChainId);
-      const app = await chain.application(appId);
+      const chain = await this.client?.chain(targetChainId);
+      const app = await chain?.application(appId);
+
+      if (!app) {
+        logger.error('[ClientManager] Could not load app from client');
+        return null;
+      }
 
       return new ApplicationClientImpl(
         appId,
@@ -356,7 +363,7 @@ export class LineraClientManager implements ILineraClientManager {
     // Reload WASM module
     try {
       this.lineraModule = await this.loadLinera();
-      const { default: init } = this.lineraModule as LineraModule;
+      const { initialize: init } = this.lineraModule as LineraModule;
       await init();
     } catch (initErr) {
       logger.error('[ClientManager] WASM init failed:', initErr);
@@ -410,26 +417,38 @@ export class LineraClientManager implements ILineraClientManager {
    * Load Linera module
    */
   private async loadLinera(): Promise<LineraModule | null> {
-    // Directly load the Linera WebAssembly module from the public directory or node_module folder
-    // Using a function wrapper to bypass Turbopack's static analysis
-    
     let lineraModule: LineraModule | null = null;
 
-    if (typeof window !== 'undefined') {
+    // @ts-ignore - process.env might not exist in browser
+    const isTest = typeof process !== 'undefined' && (process.env.VITEST || process.env.NODE_ENV === 'test');
+    const isBrowser = typeof window !== 'undefined' && !isTest;
+
+    if (!isBrowser) {
+      try {
+          // Try to resolve the package location
+          const { createRequire } = await import('module');
+          const require = createRequire(import.meta.url);
+          const resolvedPath = require.resolve('@linera/client');
+          
+          logger.info('[ClientManager] Resolved path:', resolvedPath);
+          
+          // Import from resolved path
+          lineraModule = await import(resolvedPath);
+      } catch (error) {
+        logger.error('[ClientManager] Failed to resolve package:', error);
+        throw error;
+      }
+
+    } else {
       const origin = window.location.origin;
       const moduleUrl = `${origin}/linera/linera.js`;
       logger.info('Loading Linera module from:', moduleUrl);
 
       // Use Function constructor to create dynamic import that Turbopack can't analyze
-      // This bypasses static analysis while still loading the module at runtime
       const loadModule = new Function('url', 'return import(url)');
       lineraModule = await loadModule(moduleUrl) as LineraModule;
-
-    } else {
-      const require = createRequire(import.meta.url)
-      lineraModule = require('@linera/client')
     }
-    
+
     logger.info('Linera module loaded:', lineraModule);
 
     return lineraModule;

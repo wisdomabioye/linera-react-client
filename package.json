@@ -47,6 +47,10 @@
     "dev": "tsup --watch",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "prepublishOnly": "npm run build:scripts && npm run build",
     "postinstall": "node scripts/postinstall.min.js",
     "linera:copy": "node scripts/postinstall.min.js",
@@ -86,9 +90,14 @@
     "@semantic-release/git": "^10.0.1",
     "@semantic-release/github": "^12.0.2",
     "@semantic-release/npm": "^13.1.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.1",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20.10.6",
     "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
+    "@vitest/ui": "^4.0.16",
+    "happy-dom": "^20.0.11",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.6",
     "next": "^16.0.2",
@@ -97,7 +106,8 @@
     "semantic-release": "^25.0.2",
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
-    "vite": "^7.2.2"
+    "vite": "^7.2.2",
+    "vitest": "^4.0.16"
   },
   "release": {
     "branches": [

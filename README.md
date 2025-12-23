@@ -248,10 +248,25 @@ Works in both browser and Node.js:
 ## Examples
 
 Check the `/examples` folder for complete working apps:
-- Next.js App Router
-- Next.js Pages Router
-- Vite + React
-- Create React App
+- **Next.js App Router** - Full-stack app with App Router
+- **Next.js Pages Router** - Pages Router implementation
+- **Vite + React** - Fast dev server with Vite
+- **Create React App** - CRA setup
+- **Node.js** - Server-side usage with mock & real examples
+
+### Running Examples
+
+```bash
+# Browser examples (Next.js, Vite, CRA)
+cd examples/nextjs-app  # or nextjs-pages, vite, cra
+npm install
+npm run dev
+
+# Node.js examples
+cd examples/nodejs
+npm install
+npm start  # Runs both mock and real (if configured)
+```
 
 ## Troubleshooting
 

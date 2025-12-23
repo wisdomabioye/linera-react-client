@@ -9,9 +9,11 @@
 // React Hooks
 export {
   useLineraClient,
+  useLineraChain,
   useLineraApplication,
   useWalletConnection,
   type UseLineraClientReturn,
+  UseLineraChainReturn,
   type UseLineraApplicationReturn,
   type UseWalletConnectionReturn,
 } from './hooks';

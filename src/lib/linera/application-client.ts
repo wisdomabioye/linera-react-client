@@ -60,40 +60,6 @@ export class ApplicationClientImpl implements ApplicationClient {
   }
 
   /**
-   * Query any chain by ID via HTTP
-   * Useful for cross-chain queries
-   */
-  async queryChain<T = unknown>(chainId: string, gql: string): Promise<T> {
-    const endpoint = `${this.faucetUrl}/chains/${chainId}/applications/${this.appId}`;
-
-    try {
-      logger.debug(`[ApplicationClient] Cross-chain query to ${chainId}:`, gql);
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: gql })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-
-      if (result.errors) {
-        throw new Error(result.errors[0]?.message || 'GraphQL query failed');
-      }
-
-      return result.data as T;
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      logger.error(`[ApplicationClient] Cross-chain query failed:`, err);
-      throw new Error(`Cross-chain query failed: ${err.message}`);
-    }
-  }
-
-  /**
    * Execute mutation on the application
    * Requires connected wallet to sign and pay gas fees
    */
@@ -134,47 +100,5 @@ export class ApplicationClientImpl implements ApplicationClient {
    */
   canMutate(): boolean {
     return !!(this.walletSigner && this.walletChainId && this.walletAddress);
-  }
-
-  /**
-   * Static utility for querying any chain without client instance
-   * @param faucetUrl - Faucet/node URL
-   * @param chainId - Target chain ID to query
-   * @param appId - Application ID
-   * @param gql - GraphQL query string
-   */
-  static async queryChainStatic<T = unknown>(
-    faucetUrl: string,
-    chainId: string,
-    appId: string,
-    gql: string
-  ): Promise<T> {
-    const endpoint = `${faucetUrl}/chains/${chainId}/applications/${appId}`;
-
-    try {
-      logger.debug(`[ApplicationClient] Static query to chain ${chainId}:`, gql);
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: gql })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-
-      if (result.errors) {
-        throw new Error(result.errors[0]?.message || 'GraphQL query failed');
-      }
-
-      return result.data as T;
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      logger.error(`[ApplicationClient] queryChainStatic failed:`, err);
-      throw new Error(`Cross-chain query failed: ${err.message}`);
-    }
   }
 }

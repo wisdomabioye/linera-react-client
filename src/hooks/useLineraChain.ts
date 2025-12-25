@@ -54,7 +54,7 @@ export interface UseLineraChainReturn {
  * ```
  */
 export function useLineraChain(chainId?: string): UseLineraChainReturn {
-  const { client, isInitialized, defaultChainId } = useLineraClient();
+  const { getChain, isInitialized, defaultChainId } = useLineraClient();
   const [chain, setChain] = useState<Chain | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -64,7 +64,7 @@ export function useLineraChain(chainId?: string): UseLineraChainReturn {
   // Load chain instance
   useEffect(() => {
     // Don't load if not initialized yet
-    if (!isInitialized || !client) {
+    if (!isInitialized) {
       return;
     }
 
@@ -81,7 +81,8 @@ export function useLineraChain(chainId?: string): UseLineraChainReturn {
     const loadChain = async () => {
       try {
         setIsLoading(true);
-        const chainInstance = await client.chain(targetChainId);
+        // Use cached getChain instead of client.chain()
+        const chainInstance = await getChain(targetChainId);
 
         if (!cancelled) {
           setChain(chainInstance);
@@ -101,7 +102,7 @@ export function useLineraChain(chainId?: string): UseLineraChainReturn {
     return () => {
       cancelled = true;
     };
-  }, [targetChainId, client, isInitialized]);
+  }, [targetChainId, getChain, isInitialized]);
 
   return {
     chain,

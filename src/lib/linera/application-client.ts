@@ -7,7 +7,7 @@
  * - Cross-chain queries
  */
 
-import type { Application } from '@linera/client';
+import type { Application, QueryOptions } from '@linera/client';
 import type { ApplicationClient } from './types';
 import type { Signer } from '@linera/client';
 import { logger } from '../../utils/logger';
@@ -17,7 +17,7 @@ import { logger } from '../../utils/logger';
  */
 export class ApplicationClientImpl implements ApplicationClient {
   readonly appId: string;
-  readonly chainId: string;
+  readonly appChainId: string;
 
   private app: Application;
   private walletSigner: (Signer & { address: () => Promise<string> }) | null;
@@ -27,7 +27,7 @@ export class ApplicationClientImpl implements ApplicationClient {
 
   constructor(
     appId: string,
-    chainId: string,
+    appChainId: string,
     app: Application,
     walletSigner: (Signer & { address: () => Promise<string> }) | null,
     walletChainId: string | undefined,
@@ -35,7 +35,7 @@ export class ApplicationClientImpl implements ApplicationClient {
     faucetUrl: string
   ) {
     this.appId = appId;
-    this.chainId = chainId;
+    this.appChainId = appChainId;
     this.app = app;
     this.walletSigner = walletSigner;
     this.walletChainId = walletChainId;
@@ -47,10 +47,10 @@ export class ApplicationClientImpl implements ApplicationClient {
    * Execute GraphQL query on the application chain
    * Queries are free and don't require a wallet
    */
-  async query<T = unknown>(gql: string, blockHash?: string): Promise<T> {
+  async query<T = unknown>(gql: string, options?: QueryOptions): Promise<T> {
     try {
-      logger.debug(`[ApplicationClient] Query on chain ${this.chainId}:`, gql);
-      const result = await this.app.query(gql, { blockHash });
+      logger.debug(`[ApplicationClient] Query on chain ${this.appChainId}:`, gql);
+      const result = await this.app.query(gql, options);
       return result as T;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -63,7 +63,7 @@ export class ApplicationClientImpl implements ApplicationClient {
    * Execute mutation on the application
    * Requires connected wallet to sign and pay gas fees
    */
-  async mutate<T = unknown>(gql: string, blockHash?: string): Promise<T> {
+  async mutate<T = unknown>(gql: string, options?: QueryOptions): Promise<T> {
     if (!this.canMutate()) {
       throw new Error(
         'Wallet not connected. Please connect wallet to perform mutations.'
@@ -72,7 +72,7 @@ export class ApplicationClientImpl implements ApplicationClient {
 
     try {
       logger.info(`[ApplicationClient] Executing mutation (wallet chain: ${this.walletChainId})`);
-      const result = await this.app.query(gql, { blockHash });
+      const result = await this.app.query(gql, options);
       return result as T;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));

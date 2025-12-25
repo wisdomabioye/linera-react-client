@@ -4,7 +4,7 @@
  * Core type definitions for Linera client management
  */
 
-import type { Client, Faucet, Wallet, Signer, Application, initialize } from '@linera/client';
+import type { Client, Faucet, Wallet, Signer, Application, initialize, QueryOptions } from '@linera/client';
 
 /**
  * Client operational modes
@@ -124,20 +124,20 @@ export interface ApplicationClient {
   /** Application ID */
   readonly appId: string;
 
-  /** Chain ID being queried */
-  readonly chainId: string;
+  /** Chain ID where the application is deployed */
+  readonly appChainId: string;
 
   /**
    * Execute GraphQL query on the application chain
    * Queries are free and don't require a wallet
    */
-  query<T = unknown>(gql: string, blockHash?: string): Promise<T>;
+  query<T = unknown>(gql: string, options?: QueryOptions): Promise<T>;
   /**
    * Execute mutation on the application
    * Requires connected wallet to sign and pay gas fees
    * @throws Error if wallet is not connected
    */
-  mutate<T = unknown>(gql: string, blockHash?: string): Promise<T>;
+  mutate<T = unknown>(gql: string, options?: QueryOptions): Promise<T>;
 
   /**
    * Get connected wallet address (if wallet is connected)

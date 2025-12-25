@@ -29,7 +29,7 @@ export interface UseLineraApplicationReturn {
  * Hook to access a specific Linera application
  *
  * @param appId - The application ID
- * @param chainId - Optional chain ID (uses defaultChainId if not provided)
+ * @param appChainId - Optional chain ID where app is deployed (uses defaultChainId if not provided)
  * @returns Application client and helper methods
  *
  * @example
@@ -62,7 +62,7 @@ export interface UseLineraApplicationReturn {
  * }
  * ```
  */
-export function useLineraApplication(appId: string, chainId?: string): UseLineraApplicationReturn {
+export function useLineraApplication(appId: string, appChainId?: string): UseLineraApplicationReturn {
   const { getApplication, isInitialized, canWrite } = useLineraClient();
   const [app, setApp] = useState<ApplicationClient | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -79,7 +79,7 @@ export function useLineraApplication(appId: string, chainId?: string): UseLinera
     const loadApp = async () => {
       try {
         setIsLoading(true);
-        const appInstance = await getApplication(appId, chainId);
+        const appInstance = await getApplication(appId, appChainId);
 
         if (!cancelled) {
           setApp(appInstance);
@@ -99,7 +99,7 @@ export function useLineraApplication(appId: string, chainId?: string): UseLinera
     return () => {
       cancelled = true;
     };
-  }, [appId, chainId, getApplication, isInitialized, canWrite]); // Re-load when canWrite changes
+  }, [appId, appChainId, getApplication, isInitialized, canWrite]); // Re-load when canWrite changes
 
   return {
     app,

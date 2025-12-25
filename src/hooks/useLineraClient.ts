@@ -5,7 +5,7 @@
  */
 
 'use client';
-import type { Wallet, Client } from '@linera/client';
+import type { Wallet, Client, Chain } from '@linera/client';
 import { type ClientState, type ApplicationClient, ClientMode } from '../lib/linera/types';
 import { useState, useEffect, useCallback } from 'react';
 import { getLineraClientManager } from '../lib/linera/client-manager';
@@ -45,6 +45,9 @@ export interface UseLineraClientReturn {
   /** Any error that occurred */
   error: Error | undefined;
 
+  /** Get chain instance (cached) */
+  getChain: (chainId: string) => Promise<Chain>;
+
   /** Get application client */
   getApplication: (appId: string, chainId?: string) => Promise<ApplicationClient | null>;
 }
@@ -83,6 +86,14 @@ export function useLineraClient(): UseLineraClientReturn {
     return unsubscribe;
   }, [clientManager]);
 
+  // Get chain instance (cached)
+  const getChain = useCallback(async (chainId: string): Promise<Chain> => {
+    if (!clientManager) {
+      throw new Error('[useLineraClient] Client manager not initialized');
+    }
+    return clientManager.getChain(chainId);
+  }, [clientManager]);
+
   // Get application client
   const getApplication = useCallback(async (appId: string, chainId?: string): Promise<ApplicationClient | null> => {
     if (!clientManager) {
@@ -104,6 +115,7 @@ export function useLineraClient(): UseLineraClientReturn {
     defaultChainId: state.defaultChainId,
     canWrite: clientManager?.canWrite() || false,
     error: state.error,
+    getChain,
     getApplication,
   };
 }

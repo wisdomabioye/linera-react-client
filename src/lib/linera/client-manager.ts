@@ -108,12 +108,9 @@ export class LineraClientManager implements ILineraClientManager {
   /**
    * Initialize in read-only mode with temporary wallet
    * Claims a PUBLIC chain for queries and cross-chain subscriptions
+   * Works in both browser and Node.js environments
    */
   async initializeReadOnly(): Promise<void> {
-    if (typeof window === 'undefined') {
-      throw new Error('Linera client can only be initialized on the client side');
-    }
-
     if (this.mode !== ClientMode.UNINITIALIZED) {
       logger.debug('[ClientManager] Already initialized');
       return;
@@ -127,10 +124,47 @@ export class LineraClientManager implements ILineraClientManager {
       const { Client, Faucet, default: init } = this.lineraModule;
 
       // Initialize WASM
-      await init();
+      try {
+        logger.info('[ClientManager] Initializing WASM...');
+        const isNode = typeof window === 'undefined';
+
+        if (isNode && (this.lineraModule as any).initSync) {
+          // In Node.js, use initSync if available to avoid fetch issues
+          logger.info('[ClientManager] Using initSync for Node.js...');
+          const fs = await import('fs');
+          const path = await import('path');
+
+          // Find the WASM file - it's in the @linera/client package
+          // Try to resolve the package location
+          let wasmPath: string;
+          try {
+            // Try using import.meta.resolve (Node 20.6+)
+            const clientPath = await import.meta.resolve('@linera/client');
+            const { fileURLToPath } = await import('url');
+            const clientDir = path.dirname(fileURLToPath(clientPath));
+            wasmPath = path.join(clientDir, 'wasm', 'index_bg.wasm');
+          } catch {
+            // Fallback: assume standard node_modules structure
+            wasmPath = path.join(process.cwd(), 'node_modules', '@linera', 'client', 'dist', 'wasm', 'index_bg.wasm');
+          }
+
+          logger.info('[ClientManager] Loading WASM from:', wasmPath);
+          const wasmBuffer = fs.readFileSync(wasmPath);
+          (this.lineraModule as any).initSync(wasmBuffer);
+        } else {
+          await init();
+        }
+
+        logger.info('[ClientManager] WASM initialized successfully');
+      } catch (initError) {
+        logger.error('[ClientManager] WASM initialization failed:', initError);
+        throw initError;
+      }
 
       // Create faucet
+      logger.info('[ClientManager] Creating faucet...');
       this.faucet = new Faucet(this.config.faucetUrl);
+      logger.info('[ClientManager] Faucet created');
 
       if (!this.faucet) {
         logger.error('[ClientManager] Failed to instantiate Faucet');
@@ -138,7 +172,14 @@ export class LineraClientManager implements ILineraClientManager {
       }
 
       // Create public wallet from faucet
-      this.publicWallet = await this.faucet.createWallet();
+      logger.info('[ClientManager] Creating wallet from faucet...');
+      try {
+        this.publicWallet = await this.faucet.createWallet();
+        logger.info('[ClientManager] Wallet created successfully');
+      } catch (walletError) {
+        logger.error('[ClientManager] Failed to create wallet:', walletError);
+        throw walletError;
+      }
 
       // Create temporary signer for public chain
       const tempSigner = new TemporarySigner(this.config.readOnlyWallet);
@@ -619,14 +660,18 @@ export class LineraClientManager implements ILineraClientManager {
       await init();
     } catch (initErr) {
       logger.error('[ClientManager] reinit(): wasm init failed', initErr);
-      // fallback to full reload of the page as last resort
-      try {
-        logger.info('[ClientManager] reinit(): falling back to window.location.reload()');
-        window.location.reload();
-        return;
-      } catch {
-        throw initErr;
+      // fallback to full reload of the page as last resort (browser only)
+      if (typeof window !== 'undefined') {
+        try {
+          logger.info('[ClientManager] reinit(): falling back to window.location.reload()');
+          window.location.reload();
+          return;
+        } catch {
+          throw initErr;
+        }
       }
+      // In Node.js, cannot reload - throw the error
+      throw initErr;
     }
 
     // 4) Recreate public chain resources by calling initializeReadOnly()
@@ -634,13 +679,17 @@ export class LineraClientManager implements ILineraClientManager {
       await this.initializeReadOnly();
     } catch (initReadOnlyErr) {
       logger.error('[ClientManager] reinit(): initializeReadOnly() failed', initReadOnlyErr);
-      // hard reload as fallback
-      try {
-        window.location.reload();
-        return;
-      } catch {
-        throw initReadOnlyErr;
+      // hard reload as fallback (browser only)
+      if (typeof window !== 'undefined') {
+        try {
+          window.location.reload();
+          return;
+        } catch {
+          throw initReadOnlyErr;
+        }
       }
+      // In Node.js, cannot reload - throw the error
+      throw initReadOnlyErr;
     }
 
     // 5) If we previously had a wallet signer, try to reconnect it (best-effort)
@@ -704,23 +753,40 @@ export class LineraClientManager implements ILineraClientManager {
 
   /**
    * Load Linera module
+   * Supports both browser and Node.js environments
    */
   private async loadLinera(): Promise<LineraModule> {
-    // Directly load the Linera WebAssembly module from the public directory
-    // Using a function wrapper to bypass Turbopack's static analysis
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const moduleUrl = `${origin}/linera/wasm/index.js`;
+    const isNode = typeof window === 'undefined';
 
-    logger.info('Loading Linera module from:', moduleUrl);
+    if (isNode) {
+      // Node.js environment - import directly from @linera/client
+      logger.info('[ClientManager] Loading Linera module from @linera/client (Node.js)');
+      const module = await import('@linera/client') as any;
 
-    // Use Function constructor to create dynamic import that Turbopack can't analyze
-    // This bypasses static analysis while still loading the module at runtime
-    const loadModule = new Function('url', 'return import(url)');
-    const lineraModule = await loadModule(moduleUrl) as LineraModule;
+      // Normalize module structure - in Node.js, 'initialize' is a named export
+      // In browser, it's the default export
+      const lineraModule = {
+        ...module,
+        default: module.initialize || module.default,
+      } as LineraModule;
 
-    logger.info('Linera module loaded:', lineraModule);
+      logger.info('[ClientManager] Linera module loaded (Node.js)');
+      return lineraModule;
+    } else {
+      // Browser environment - load from public directory
+      const origin = window.location.origin;
+      const moduleUrl = `${origin}/linera/wasm/index.js`;
 
-    return lineraModule;
+      logger.info('[ClientManager] Loading Linera module from:', moduleUrl);
+
+      // Use Function constructor to create dynamic import that Turbopack can't analyze
+      // This bypasses static analysis while still loading the module at runtime
+      const loadModule = new Function('url', 'return import(url)');
+      const lineraModule = await loadModule(moduleUrl) as LineraModule;
+
+      logger.info('[ClientManager] Linera module loaded (Browser)');
+      return lineraModule;
+    }
   }
 
   /**

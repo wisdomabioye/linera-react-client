@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import type { ChainApp } from '../lib/linera/types';
-import { getLineraClientManager } from '@/lib/linera';
+import { getLineraClientManager } from '../lib/linera';
 import { useLineraClient } from './useLineraClient';
 import { logger } from '../utils/logger';
 

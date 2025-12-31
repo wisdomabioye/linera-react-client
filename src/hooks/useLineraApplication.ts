@@ -6,7 +6,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import type { ApplicationClient } from '../lib/linera/types';
 import { useLineraClient } from './useLineraClient';
 import { logger } from '../utils/logger';
@@ -23,24 +23,6 @@ export interface UseLineraApplicationReturn {
 
   /** Can perform write operations */
   canWrite: boolean;
-
-  /**
-   * @deprecated Use app.publicClient.query() instead for queries.
-   * Execute a query on the current chain
-   */
-  query: <T = unknown>(gql: string, blockHash?: string) => Promise<T>;
-
-  /**
-   * @deprecated Use app.publicClient.systemMutate() for system operations or app.walletClient.mutate() for user operations.
-   * Execute a mutation on the current chain
-   */
-  mutate: <T = unknown>(gql: string, blockHash?: string) => Promise<T>;
-
-  /**
-   * @deprecated Use app.publicClient.queryChain() instead for cross-chain queries.
-   * Query any chain by ID (cross-chain query)
-   */
-  queryChain: <T = unknown>(chainId: string, gql: string) => Promise<T>;
 }
 
 /**
@@ -75,6 +57,7 @@ export interface UseLineraApplicationReturn {
  * }
  * ```
  */
+
 export function useLineraApplication(appId: string): UseLineraApplicationReturn {
   const { getApplication, isInitialized, canWrite } = useLineraClient();
   const [app, setApp] = useState<ApplicationClient | null>(null);
@@ -114,34 +97,10 @@ export function useLineraApplication(appId: string): UseLineraApplicationReturn 
     };
   }, [appId, getApplication, isInitialized, canWrite]); // Re-load when canWrite changes
 
-  const query = useCallback(async <T = unknown>(gql: string, blockHash?: string): Promise<T> => {
-    if (!app) {
-      throw new Error('Application not initialized. Ensure Linera client is ready.');
-    }
-    return app.query<T>(gql, blockHash);
-  }, [app]);
-
-  const mutate = useCallback(async <T = unknown>(gql: string, blockHash?: string): Promise<T> => {
-    if (!app) {
-      throw new Error('Application not initialized. Ensure Linera client is ready.');
-    }
-    return app.mutate<T>(gql, blockHash);
-  }, [app]);
-
-  const queryChain = useCallback(async <T = unknown>(chainId: string, gql: string): Promise<T> => {
-    if (!app) {
-      throw new Error('Application not initialized. Ensure Linera client is ready.');
-    }
-    return app.queryChain<T>(chainId, gql);
-  }, [app]);
-
   return {
     app,
     isReady: app !== null && !isLoading,
     isLoading,
-    canWrite,
-    queryChain,
-    query,
-    mutate,
+    canWrite
   };
 }

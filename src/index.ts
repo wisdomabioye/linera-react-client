@@ -9,10 +9,14 @@
 // React Hooks
 export {
   useLineraClient,
+  useLineraChain,
   useLineraApplication,
+  useChainApplication,
   useWalletConnection,
   type UseLineraClientReturn,
+  type UseLineraChainReturn,
   type UseLineraApplicationReturn,
+  type UseChainApplicationReturn,
   type UseWalletConnectionReturn,
 } from './hooks';
 
@@ -29,23 +33,20 @@ export {
   getLineraClientManager,
   resetLineraClientManager,
   ApplicationClientImpl,
+  ChainApplicationClient,
   TemporarySigner,
   ClientMode,
   type ClientState,
   type ClientConfig,
   type ReadOnlyWalletConfig,
   type ApplicationClient,
+  type ChainApp,
   type StateChangeCallback,
   type ILineraClientManager,
   type Client,
   type Wallet,
   type Signer,
-  type Application,
-  type LineraModule,
-  type ClientConstructor,
-  type FaucetConstructor,
-  type Frontend,
-  type InitFunction,
+  type Application
 } from './lib/linera';
 
 // Signer Options

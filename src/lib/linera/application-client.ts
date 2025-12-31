@@ -9,14 +9,13 @@
  * - Wallet chain (MetaMask signer): user mutations
  */
 
-import type { Application } from '@linera/client';
+import type { Application, QueryOptions } from '@linera/client';
 import type {
   ApplicationClient,
-  PublicClient,
-  WalletClient,
-  MutateOptions,
+  PublicApp,
+  WalletApp,
+  ChainApp,
 } from './types';
-import { OperationType as OpType } from './types';
 import { logger } from '../../utils/logger';
 
 /**
@@ -24,14 +23,8 @@ import { logger } from '../../utils/logger';
  */
 export class ApplicationClientImpl implements ApplicationClient {
   readonly appId: string;
-  readonly publicClient: PublicClient;
-  readonly walletClient?: WalletClient;
-
-  /**
-   * @deprecated Use publicClient instead
-   * Underlying Linera application instance (public chain)
-   */
-  readonly application: Application;
+  readonly public: PublicApp;
+  readonly wallet?: WalletApp;
 
   private publicApp: Application;
   private walletApp?: Application;
@@ -56,7 +49,6 @@ export class ApplicationClientImpl implements ApplicationClient {
     this.appId = appId;
     this.publicApp = publicApp;
     this.walletApp = walletApp;
-    this.application = publicApp; // Deprecated - backward compatibility
     this.canWriteWithWallet = canWriteWithWallet;
     this.faucetUrl = faucetUrl;
     this.publicChainId = publicChainId;
@@ -64,143 +56,29 @@ export class ApplicationClientImpl implements ApplicationClient {
     this.walletAddress = walletAddress;
     this.publicAddress = publicAddress;
 
-    // Initialize split clients
-    this.publicClient = this.createPublicClient();
+    // Initialize public and wallet app interfaces
+    this.public = this.createPublicApp();
 
     if (canWriteWithWallet && walletApp) {
-      this.walletClient = this.createWalletClient();
+      this.wallet = this.createWalletApp();
     }
   }
 
   // ============================================
-  // LEGACY API (backward compatible with deprecation warnings)
+  // PUBLIC AND WALLET APP INTERFACES
   // ============================================
 
-  /**
-   * @deprecated Use publicClient.query() instead
-   * Execute a GraphQL query
-   * Works in both read-only and full mode
-   */
-  async query<T = unknown>(gql: string, blockHash?: string): Promise<T> {
-    if (process.env.NODE_ENV !== 'production') {
-      logger.warn('[ApplicationClient] DEPRECATED: query() is deprecated. Use publicClient.query() instead.');
-    }
-    return this.publicClient.query<T>(gql, blockHash);
-  }
-
-  /**
-   * @deprecated Use publicClient.systemMutate() for system operations or walletClient.mutate() for user operations
-   * Execute a GraphQL mutation with flexible operation type support
-   *
-   * @param gql - GraphQL mutation string
-   * @param options - Either MutateOptions object or blockHash string (backward compat)
-   *
-   * @example
-   * // User mutation (requires wallet) - default behavior
-   * await app.mutate('mutation { transfer(amount: 100) }');
-   *
-   * // System mutation (auto-signed, no wallet needed)
-   * await app.mutate(
-   *   'mutation { subscribe(channelId: "abc") }',
-   *   { operationType: OperationType.SYSTEM }
-   * );
-   *
-   * // Backward compatible with blockHash
-   * await app.mutate('mutation { ... }', 'block-hash-123');
-   */
-  async mutate<T = unknown>(
-    gql: string,
-    options?: MutateOptions | string
-  ): Promise<T> {
-    if (process.env.NODE_ENV !== 'production') {
-      logger.warn('[ApplicationClient] DEPRECATED: mutate() is deprecated. Use publicClient.systemMutate() for system operations or walletClient.mutate() for user operations.');
-    }
-
-    // Handle backward compatibility: string means blockHash
-    const opts: MutateOptions = typeof options === 'string'
-      ? { blockHash: options, operationType: OpType.USER }
-      : { operationType: OpType.USER, ...options };
-
-    const { operationType, blockHash } = opts;
-
-    // Route based on operation type
-    switch (operationType) {
-      case OpType.SYSTEM:
-        logger.debug(`[ApplicationClient] System mutation on public chain: ${this.publicChainId}`);
-        return this.executeSystemMutation<T>(gql, blockHash);
-
-      case OpType.USER:
-        if (!this.canWriteWithWallet || !this.walletApp) {
-          throw new Error(
-            'User mutations require wallet connection. Please connect MetaMask or use operationType: OperationType.SYSTEM for auto-signed operations.'
-          );
-        }
-        logger.debug(`[ApplicationClient] User mutation on wallet chain: ${this.walletChainId}`);
-        return this.executeUserMutation<T>(gql, blockHash);
-
-      default:
-        throw new Error(`Unknown operation type: ${operationType}`);
-    }
-  }
-
-  /**
-   * @deprecated Use publicClient.queryChain() instead
-   * Query any chain by ID via HTTP (no need to claim it)
-   * @param chainId - Target chain ID to query
-   * @param gql - GraphQL query string
-   */
-  async queryChain<T = unknown>(chainId: string, gql: string): Promise<T> {
-    if (process.env.NODE_ENV !== 'production') {
-      logger.warn('[ApplicationClient] DEPRECATED: queryChain() is deprecated. Use publicClient.queryChain() instead.');
-    }
-    return this.publicClient.queryChain<T>(chainId, gql);
-  }
-
-  // ============================================
-  // NEW SPLIT CLIENT API
-  // ============================================
-
-  private createPublicClient(): PublicClient {
+  private createPublicApp(): PublicApp {
     return {
-      query: async <T>(gql: string, blockHash?: string): Promise<T> => {
+      query: async <T>(gql: string, options?: QueryOptions): Promise<T> => {
         try {
           logger.debug(`[ApplicationClient] Query on public chain ${this.publicChainId}:`, gql);
-          const result = await this.publicApp.query(gql, blockHash);
+          const result = await this.publicApp.query(gql, options);
           return result as T;
         } catch (error) {
           const err = error instanceof Error ? error : new Error(String(error));
           logger.error(`[ApplicationClient] Query failed:`, err);
           throw new Error(`Application query failed: ${err.message}`);
-        }
-      },
-
-      queryChain: async <T>(chainId: string, gql: string): Promise<T> => {
-        const endpoint = `${this.faucetUrl}/chains/${chainId}/applications/${this.appId}`;
-
-        try {
-          logger.debug(`[ApplicationClient] QueryChain ${chainId}:`, gql);
-
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: gql })
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-
-          const result = await response.json();
-
-          if (result.errors) {
-            throw new Error(result.errors[0]?.message || 'GraphQL query failed');
-          }
-
-          return result.data as T;
-        } catch (error) {
-          const err = error instanceof Error ? error : new Error(String(error));
-          logger.error(`[ApplicationClient] QueryChain failed:`, err);
-          throw new Error(`Cross-chain query failed: ${err.message}`);
         }
       },
 
@@ -218,22 +96,22 @@ export class ApplicationClientImpl implements ApplicationClient {
         return this.publicChainId;
       },
       
-      systemMutate: async <T>(gql: string, blockHash?: string): Promise<T> => {
-        return this.executeSystemMutation<T>(gql, blockHash);
+      systemMutate: async <T>(gql: string, options?: QueryOptions): Promise<T> => {
+        return this.executeSystemMutation<T>(gql, options);
       },
     };
   }
 
-  private createWalletClient(): WalletClient {
+  private createWalletApp(): WalletApp {
     return {
-      query: async <T>(gql: string, blockHash?: string): Promise<T> => {
+      query: async <T>(gql: string, options?: QueryOptions): Promise<T> => {
         if (!this.walletApp) {
           throw new Error('Wallet not connected or has been disconnected');
         }
 
         try {
           logger.debug(`[WalletApplicationClient] Query on wallet chain ${this.walletChainId}:`, gql);
-          const result = await this.walletApp.query(gql, blockHash);
+          const result = await this.walletApp.query(gql, options);
           return result as T;
         } catch (error) {
           const err = error instanceof Error ? error : new Error(String(error));
@@ -242,41 +120,11 @@ export class ApplicationClientImpl implements ApplicationClient {
         }
       },
 
-      queryChain: async <T>(chainId: string, gql: string): Promise<T> => {
-        const endpoint = `${this.faucetUrl}/chains/${chainId}/applications/${this.appId}`;
-
-        try {
-          logger.debug(`[WalletApplicationClient] QueryChain ${chainId}:`, gql);
-
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: gql })
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-
-          const result = await response.json();
-
-          if (result.errors) {
-            throw new Error(result.errors[0]?.message || 'GraphQL query failed');
-          }
-
-          return result.data as T;
-        } catch (error) {
-          const err = error instanceof Error ? error : new Error(String(error));
-          logger.error(`[ApplicationClient] QueryChain failed:`, err);
-          throw new Error(`Cross-chain query failed: ${err.message}`);
-        }
-      },
-
-      mutate: async <T>(gql: string, blockHash?: string): Promise<T> => {
+      mutate: async <T>(gql: string, options?: QueryOptions): Promise<T> => {
         if (!this.walletApp) {
           throw new Error('Wallet not connected or has been disconnected');
         }
-        return this.executeUserMutation<T>(gql, blockHash);
+        return this.executeUserMutation<T>(gql, options);
       },
 
       getAddress: (): string => {
@@ -306,11 +154,11 @@ export class ApplicationClientImpl implements ApplicationClient {
    */
   private async executeSystemMutation<T>(
     gql: string,
-    blockHash?: string
+    options?: QueryOptions
   ): Promise<T> {
     try {
       logger.info(`[ApplicationClient] Executing system mutation on public chain: ${this.publicChainId}`);
-      const result = await this.publicApp.query(gql, blockHash);
+      const result = await this.publicApp.query(gql, options);
       return result as T;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -326,14 +174,14 @@ export class ApplicationClientImpl implements ApplicationClient {
    */
   private async executeUserMutation<T>(
     gql: string,
-    blockHash?: string
+    options?: QueryOptions
   ): Promise<T> {
     try {
       if (!this.walletApp) {
         throw new Error('Wallet application not available');
       }
       logger.info(`[ApplicationClient] Executing user mutation on wallet chain: ${this.walletChainId}`);
-      const result = await this.walletApp.query(gql, blockHash);
+      const result = await this.walletApp.query(gql, options);
       return result as T;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -341,46 +189,71 @@ export class ApplicationClientImpl implements ApplicationClient {
       throw new Error(`Application mutation failed: ${err.message}`);
     }
   }
+}
+
+/**
+ * Wrapper for standalone chain applications
+ * Provides WalletApp-like interface for applications loaded from arbitrary chains
+ */
+export class ChainApplicationClient implements ChainApp {
+  private app: Application;
+  private chainId: string;
+  private address: string;
+  readonly appId: string;
+
+  constructor(
+    appId: string,
+    app: Application,
+    chainId: string,
+    address: string
+  ) {
+    this.appId = appId;
+    this.app = app;
+    this.chainId = chainId;
+    this.address = address;
+  }
 
   /**
-   * Static utility for querying any chain without client instance
-   * @param faucetUrl - Faucet/node URL
-   * @param chainId - Target chain ID to query
-   * @param appId - Application ID
-   * @param gql - GraphQL query string
+   * Execute GraphQL query on the chain
    */
-  static async queryChainStatic<T = unknown>(
-    faucetUrl: string,
-    chainId: string,
-    appId: string,
-    gql: string
-  ): Promise<T> {
-    const endpoint = `${faucetUrl}/chains/${chainId}/applications/${appId}`;
-
+  async query<T>(gql: string, options?: QueryOptions): Promise<T> {
     try {
-      logger.debug(`[ApplicationClient] Static query to chain ${chainId}:`, gql);
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: gql })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-
-      if (result.errors) {
-        throw new Error(result.errors[0]?.message || 'GraphQL query failed');
-      }
-
-      return result.data as T;
+      logger.debug(`[ChainApplicationClient] Query on chain ${this.chainId}:`, gql);
+      const result = await this.app.query(gql, options);
+      return result as T;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error(`[ApplicationClient] queryChainStatic failed:`, err);
-      throw new Error(`Cross-chain query failed: ${err.message}`);
+      logger.error(`[ChainApplicationClient] Query failed:`, err);
+      throw new Error(`Chain application query failed: ${err.message}`);
     }
+  }
+
+  /**
+   * Execute mutation on the chain (signed by chain's signer)
+   */
+  async mutate<T>(gql: string, options?: QueryOptions): Promise<T> {
+    try {
+      logger.info(`[ChainApplicationClient] Executing mutation on chain: ${this.chainId}`);
+      const result = await this.app.query(gql, options);
+      return result as T;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error(`[ChainApplicationClient] Mutation failed:`, err);
+      throw new Error(`Chain application mutation failed: ${err.message}`);
+    }
+  }
+
+  /**
+   * Get chain owner address
+   */
+  getAddress(): string {
+    return this.address;
+  }
+
+  /**
+   * Get chain ID
+   */
+  getChainId(): string {
+    return this.chainId;
   }
 }

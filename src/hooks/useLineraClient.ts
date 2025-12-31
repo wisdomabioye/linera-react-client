@@ -18,22 +18,16 @@ export interface UseLineraClientReturn {
   /**
    * Public client for queries and system operations
    * Always available after initialization (uses temporary signer)
-   * Has access to onNotification() for blockchain event subscriptions
+   * Note: For blockchain event subscriptions, use chain.onNotification() on chain instances
    */
   publicClient: Client | null;
 
   /**
    * Wallet client for user mutations
    * Only available when wallet is connected (uses MetaMask signer)
-   * Has access to onNotification() for blockchain event subscriptions
+   * Note: For blockchain event subscriptions, use chain.onNotification() on chain instances
    */
   walletClient: Client | null;
-
-  /**
-   * @deprecated Use publicClient or walletClient instead.
-   * Returns wallet client if available, otherwise public client.
-   */
-  client: Client | null;
 
   /** Wallet instance */
   wallet: Wallet | null;
@@ -58,12 +52,6 @@ export interface UseLineraClientReturn {
 
   /** Wallet chain ID (only when wallet connected) */
   walletChainId: string | undefined;
-
-  /**
-   * @deprecated Use publicChainId or walletChainId from state instead.
-   * Returns walletChainId if available, otherwise publicChainId.
-   */
-  chainId: string | undefined;
 
   /** Can perform write operations */
   canWrite: boolean;
@@ -122,7 +110,6 @@ export function useLineraClient(): UseLineraClientReturn {
     state,
     publicClient: clientManager?.getPublicClient() || null,
     walletClient: clientManager?.getWalletClient() || null,
-    client: clientManager?.getClient() || null,
     wallet: clientManager?.getWallet() || null,
     isInitialized: state.isInitialized,
     isReadOnly: state.mode === ClientMode.READ_ONLY,
@@ -131,7 +118,6 @@ export function useLineraClient(): UseLineraClientReturn {
     publicAddress: state.publicAddress,
     publicChainId: state.publicChainId,
     walletChainId: state.walletChainId,
-    chainId: state.chainId,
     canWrite: clientManager?.canWrite() || false,
     error: state.error,
     getApplication,

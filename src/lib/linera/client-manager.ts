@@ -13,19 +13,21 @@ import type {
   Signer,
   Faucet,
   Application,
+  Chain,
 } from '@linera/client';
 
 import {
   ClientMode,
   ClientState,
   ClientConfig,
+  LineraModule,
   ApplicationClient,
+  ChainApp,
   StateChangeCallback,
   ILineraClientManager,
 } from './types';
-import type { LineraModule } from './linera-types';
 import { TemporarySigner } from './temporary-signer';
-import { ApplicationClientImpl } from './application-client';
+import { ApplicationClientImpl, ChainApplicationClient } from './application-client';
 import { logger } from '../../utils/logger';
 
 type SignerWithAddress = Signer & {address: () => Promise<string>}
@@ -54,6 +56,14 @@ export class LineraClientManager implements ILineraClientManager {
   private lineraModule: LineraModule | null = null;
   private faucet: Faucet | null = null;
 
+  // ============================================
+  // CACHE LAYER
+  // ============================================
+  private chainCache: Map<string, Chain> = new Map();
+  private appCache: Map<string, ApplicationClient> = new Map();
+  private cachedWalletChain: Chain | null = null;
+  private readonly MAX_CACHED_CHAINS = 10;
+
   constructor(config: ClientConfig) {
     this.config = config;
   }
@@ -70,8 +80,6 @@ export class LineraClientManager implements ILineraClientManager {
       publicAddress: this.publicAddress || undefined,
       publicChainId: this.publicChainId || undefined,
       walletChainId: this.walletChainId || undefined,
-      // Deprecated chainId - returns walletChainId if available, otherwise publicChainId
-      chainId: this.walletChainId || this.publicChainId || undefined,
       faucetUrl: this.config.faucetUrl,
     };
   }
@@ -88,14 +96,6 @@ export class LineraClientManager implements ILineraClientManager {
    */
   getWalletClient(): Client | null {
     return this.walletClient;
-  }
-
-  /**
-   * @deprecated Use getPublicClient() or getWalletClient() instead
-   * Get raw Linera client (returns wallet client if available, otherwise public client)
-   */
-  getClient(): Client | null {
-    return this.walletClient || this.publicClient;
   }
 
   /**
@@ -158,7 +158,9 @@ export class LineraClientManager implements ILineraClientManager {
       const clientInstance = new Client(
         this.publicWallet,
         this.publicSigner,
-        this.config.skipProcessInbox || false
+        {
+          skipProcessInbox: this.config.skipProcessInbox || false
+        }
       );
       this.publicClient = await Promise.resolve(clientInstance);
 
@@ -248,12 +250,17 @@ export class LineraClientManager implements ILineraClientManager {
       const clientInstance = new Client(
         this.walletWallet as Wallet,
         this.walletSigner,
-        this.config.skipProcessInbox || false
+        {
+          skipProcessInbox: this.config.skipProcessInbox || false
+        }
       );
       this.walletClient = await Promise.resolve(clientInstance);
 
       this.mode = ClientMode.FULL;
       this.notifyStateChange();
+
+      // Invalidate application cache (walletApp changed)
+      this.invalidateAppCache();
 
       logger.info('[ClientManager] Wallet connected successfully');
       logger.info('[ClientManager] Public chain (queries/subscriptions):', this.publicChainId);
@@ -300,6 +307,9 @@ export class LineraClientManager implements ILineraClientManager {
     this.mode = ClientMode.READ_ONLY;
     this.notifyStateChange();
 
+    // Invalidate application cache (walletApp removed)
+    this.invalidateAppCache();
+
     logger.info('[ClientManager] Wallet disconnected');
     logger.info('[ClientManager] Public chain still active:', this.publicChainId);
   }
@@ -314,6 +324,10 @@ export class LineraClientManager implements ILineraClientManager {
 
   /**
    * Get application client interface with dual-chain support
+   * Uses efficient two-tier caching (application + chain)
+   *
+   * @param appId - Application ID
+   * @returns ApplicationClient with public and wallet access
    */
   async getApplication(appId: string): Promise<ApplicationClient | null> {
     if (!this.publicClient) {
@@ -321,27 +335,49 @@ export class LineraClientManager implements ILineraClientManager {
       return null;
     }
 
-    try {
-      // Get application instance from public client (for queries/subscriptions)
-      const publicApp = await this.publicClient.frontend().application(appId);
+    // Check application cache first (fast path)
+    const cached = this.appCache.get(appId);
+    if (cached) {
+      logger.debug(`[ClientManager] Application cache hit: ${appId}`);
+      return cached;
+    }
 
-      // Get application instance from wallet client if available (for mutations)
-      let walletApp: Application | undefined;
-      if (this.walletClient) {
-        walletApp = await this.walletClient.frontend().application(appId);
+    // Cache miss - create new application client
+    logger.debug(`[ClientManager] Application cache miss: ${appId}, creating...`);
+
+    try {
+      if (!this.publicChainId) {
+        throw new Error('Public chain not initialized');
       }
 
-      return new ApplicationClientImpl(
+      // Get application instance from public chain (uses chain cache)
+      const publicChain = await this.getChain(this.publicChainId);
+      const publicApp = await publicChain.application(appId);
+
+      // Get application instance from wallet chain if available (uses chain cache)
+      let walletApp: Application | undefined;
+      if (this.walletClient && this.walletChainId) {
+        const walletChain = await this.getWalletChain();
+        walletApp = await walletChain.application(appId);
+      }
+
+      const appClient = new ApplicationClientImpl(
         appId,
         publicApp,
         walletApp,
         this.mode === ClientMode.FULL,
         this.config.faucetUrl,
-        this.publicChainId || undefined,
+        this.publicChainId,
         this.walletChainId || undefined,
         this.walletAddress || undefined,
         this.publicAddress || undefined,
       );
+
+      // Cache the application client
+      this.appCache.set(appId, appClient);
+      logger.debug(`[ClientManager] Application cached: ${appId} (total: ${this.appCache.size})`);
+
+      return appClient;
     } catch (error) {
       logger.error('[ClientManager] Failed to get application:', error);
       return null;
@@ -353,6 +389,114 @@ export class LineraClientManager implements ILineraClientManager {
    */
   canWrite(): boolean {
     return this.mode === ClientMode.FULL;
+  }
+
+  /**
+   * Get chain instance (uses publicClient, explicit chainId required)
+   * Implements efficient caching with LRU eviction
+   *
+   * @param chainId - Explicit chain ID (required, no defaults)
+   * @returns Chain instance from cache or newly created
+   */
+  async getChain(chainId: string): Promise<Chain> {
+    if (!this.publicClient) {
+      throw new Error('[ClientManager] Public client not initialized. Call initializeReadOnly() first.');
+    }
+
+    // Check cache first
+    const cached = this.chainCache.get(chainId);
+    if (cached) {
+      logger.debug(`[ClientManager] Chain cache hit: ${chainId}`);
+      return cached;
+    }
+
+    // Cache miss - create via publicClient
+    logger.debug(`[ClientManager] Chain cache miss: ${chainId}, creating...`);
+    const chain = await this.publicClient.chain(chainId);
+
+    // Evict oldest if cache is full (LRU)
+    if (this.chainCache.size >= this.MAX_CACHED_CHAINS) {
+      this.evictOldestChain();
+    }
+
+    // Cache the chain
+    this.chainCache.set(chainId, chain);
+    logger.debug(`[ClientManager] Chain cached: ${chainId} (total: ${this.chainCache.size})`);
+
+    return chain;
+  }
+
+  /**
+   * Get application client for a specific chain
+   * Returns a ChainApp interface similar to WalletApp
+   * Leverages existing chain cache for efficiency
+   *
+   * @param chainId - Chain ID to load application from
+   * @param appId - Application ID
+   * @returns ChainApp interface with query, mutate, getAddress, getChainId methods
+   *
+   * @example
+   * ```typescript
+   * // Get application from a specific chain
+   * const chainApp = await client.getChainApplication(
+   *   "e476187f6ddfeb9d588c7b45d3df334d5501d6499b3f9ad5595cae86cce16a65",
+   *   "e476187f6ddfeb9d588c7b45d3df334d5501d6499b3f9ad5595cae86cce16a65010000000000000000000000"
+   * );
+   *
+   * // Use like WalletApp
+   * const result = await chainApp.query('{ myQuery }');
+   * await chainApp.mutate('{ myMutation }');
+   * const address = chainApp.getAddress();
+   * const chainId = chainApp.getChainId();
+   * ```
+   */
+  async getChainApplication(chainId: string, appId: string): Promise<ChainApp | null> {
+    if (!this.publicClient) {
+      logger.warn('[ClientManager] Client not initialized');
+      return null;
+    }
+
+    try {
+      // Get chain instance (uses existing chain cache)
+      const chain = await this.getChain(chainId);
+
+      // Get application from the chain
+      const app = await chain.application(appId);
+
+      // Get chain owner address (use public address as fallback)
+      const address = this.publicAddress || 'unknown';
+
+      // Create and return wrapped client (lightweight wrapper, no caching needed)
+      return new ChainApplicationClient(appId, app, chainId, address);
+    } catch (error) {
+      logger.error('[ClientManager] Failed to get chain application:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get wallet chain instance (uses walletClient with caching)
+   *
+   * @returns Cached wallet chain instance
+   * @throws Error if wallet client or wallet chain ID is not available
+   */
+  private async getWalletChain(): Promise<Chain> {
+    if (!this.walletClient || !this.walletChainId) {
+      throw new Error('[ClientManager] Wallet client not initialized. Connect wallet first.');
+    }
+
+    // Return cached wallet chain if available
+    if (this.cachedWalletChain) {
+      logger.debug(`[ClientManager] Wallet chain cache hit: ${this.walletChainId}`);
+      return this.cachedWalletChain;
+    }
+
+    // Cache miss - create via walletClient
+    logger.debug(`[ClientManager] Wallet chain cache miss: ${this.walletChainId}, creating...`);
+    this.cachedWalletChain = await this.walletClient.chain(this.walletChainId);
+    logger.debug(`[ClientManager] Wallet chain cached: ${this.walletChainId}`);
+
+    return this.cachedWalletChain;
   }
 
   /**
@@ -372,7 +516,10 @@ export class LineraClientManager implements ILineraClientManager {
    */
   async destroy(): Promise<void> {
     logger.info('[ClientManager] Destroying client...');
-    
+
+    // Clear all caches first
+    this.clearAllCaches();
+
     // Cleanup public chain
     if (this.publicClient) {
       (this.publicClient).free();
@@ -434,6 +581,9 @@ export class LineraClientManager implements ILineraClientManager {
     }
 
     // 2) Forced cleanup of any lingering references (ignore errors)
+    // Clear caches (in case destroy() threw)
+    this.clearAllCaches();
+
     try {
       if (this.publicClient) {
         try { (this.publicClient as any).free?.(); } catch (e) { logger.debug('[ClientManager] publicClient.free() failed', e); }
@@ -510,6 +660,48 @@ export class LineraClientManager implements ILineraClientManager {
   }
 
 
+  // ============================================
+  // CACHE MANAGEMENT (private helpers)
+  // ============================================
+
+  /**
+   * Evict oldest chain from cache (LRU strategy)
+   */
+  private evictOldestChain(): void {
+    const firstKey = this.chainCache.keys().next().value;
+    if (firstKey) {
+      this.chainCache.delete(firstKey);
+      logger.debug(`[ClientManager] Evicted chain from cache: ${firstKey}`);
+    }
+  }
+
+  /**
+   * Invalidate application cache
+   * Called when wallet state changes (connect/disconnect/switch)
+   */
+  private invalidateAppCache(): void {
+    if (this.appCache.size > 0) {
+      logger.info(`[ClientManager] Invalidating application cache (${this.appCache.size} entries)`);
+      this.appCache.clear();
+    }
+    // Also invalidate wallet chain cache since wallet state changed
+    if (this.cachedWalletChain) {
+      logger.debug('[ClientManager] Invalidating wallet chain cache');
+      this.cachedWalletChain = null;
+    }
+  }
+
+  /**
+   * Clear all caches
+   * Called on destroy and reinit
+   */
+  private clearAllCaches(): void {
+    logger.debug('[ClientManager] Clearing all caches');
+    this.chainCache.clear();
+    this.appCache.clear();
+    this.cachedWalletChain = null;
+  }
+
   /**
    * Load Linera module
    */
@@ -517,7 +709,7 @@ export class LineraClientManager implements ILineraClientManager {
     // Directly load the Linera WebAssembly module from the public directory
     // Using a function wrapper to bypass Turbopack's static analysis
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const moduleUrl = `${origin}/linera/linera_web.js`;
+    const moduleUrl = `${origin}/linera/wasm/index.js`;
 
     logger.info('Loading Linera module from:', moduleUrl);
 

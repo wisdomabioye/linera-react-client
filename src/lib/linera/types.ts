@@ -4,7 +4,7 @@
  * Core type definitions for Linera client management
  */
 
-import type { Client, Wallet, Signer, Application } from '@linera/client';
+import type { Client, Wallet, Signer, Application, Chain, Faucet, QueryOptions, initialize } from '@linera/client';
 
 /**
  * Client operational modes
@@ -53,12 +53,6 @@ export interface ClientState {
    * Used for user mutations
    */
   walletChainId?: string;
-
-  /**
-   * @deprecated Use publicChainId or walletChainId instead
-   * Returns walletChainId if available, otherwise publicChainId
-   */
-  chainId?: string;
 
   /** Faucet URL being used */
   faucetUrl?: string;
@@ -132,39 +126,11 @@ export interface ClientConfig {
 }
 
 /**
- * Operation type for mutations
+ * Public app interface - operations that don't require user wallet
  */
-export enum OperationType {
-  /** Pure read operations (queries) */
-  READ = 'read',
-
-  /** System operations auto-signed with temporary wallet (subscriptions, heartbeat) */
-  SYSTEM = 'system',
-
-  /** User-initiated operations requiring wallet signature */
-  USER = 'user',
-}
-
-/**
- * Options for mutation operations
- */
-export interface MutateOptions {
-  /** Operation type - defaults to USER */
-  operationType?: OperationType;
-
-  /** Optional block hash */
-  blockHash?: string;
-}
-
-/**
- * Public client interface - operations that don't require user wallet
- */
-export interface PublicClient {
+export interface PublicApp {
   /** Execute GraphQL query on public chain */
-  query<T = unknown>(gql: string, blockHash?: string): Promise<T>;
-
-  /** Query any chain by ID via HTTP */
-  queryChain<T = unknown>(chainId: string, gql: string): Promise<T>;
+  query<T = unknown>(gql: string, options?: QueryOptions): Promise<T>;
 
   /** Get connected public address */
   getAddress(): string;
@@ -173,18 +139,15 @@ export interface PublicClient {
   getChainId(): string;
 
   /** Execute system mutations (auto-signed with temporary wallet, no user prompt) */
-  systemMutate<T = unknown>(gql: string, blockHash?: string): Promise<T>;
+  systemMutate<T = unknown>(gql: string, options?: QueryOptions): Promise<T>;
 }
 
 /**
- * Wallet client interface - operations requiring user wallet
+ * Wallet app interface - operations requiring user wallet
  */
-export interface WalletClient {
+export interface WalletApp {
   /** Execute GraphQL query on wallet chain */
-  query<T = unknown>(gql: string, blockHash?: string): Promise<T>;
-
-  /** Query any chain by ID via HTTP */
-  queryChain<T = unknown>(chainId: string, gql: string): Promise<T>;
+  query<T = unknown>(gql: string, options?: QueryOptions): Promise<T>;
 
   /** Get connected wallet address */
   getAddress(): string;
@@ -193,7 +156,25 @@ export interface WalletClient {
   getChainId(): string;
 
   /** Execute user mutations (requires wallet signature) */
-  mutate<T = unknown>(gql: string, blockHash?: string): Promise<T>;
+  mutate<T = unknown>(gql: string, options?: QueryOptions): Promise<T>;
+}
+
+/**
+ * Chain app interface - operations on a standalone chain
+ * Similar to WalletApp but for arbitrary chains accessed via getChain()
+ */
+export interface ChainApp {
+  /** Execute GraphQL query on the chain */
+  query<T = unknown>(gql: string, options?: QueryOptions): Promise<T>;
+
+  /** Get chain owner address */
+  getAddress(): string;
+
+  /** Get chain ID */
+  getChainId(): string;
+
+  /** Execute mutations on the chain (signed by chain's signer) */
+  mutate<T = unknown>(gql: string, options?: QueryOptions): Promise<T>;
 }
 
 /**
@@ -204,42 +185,16 @@ export interface ApplicationClient {
   readonly appId: string;
 
   /**
-   * @deprecated Use publicClient or walletClient instead
-   * Underlying Linera application instance (public chain)
-   */
-  readonly application: Application;
-
-  /**
-   * Public client for queries and system operations
+   * Public application operations (queries and system operations)
    * Always available (uses public chain with temporary signer)
    */
-  readonly publicClient: PublicClient;
+  readonly public: PublicApp;
 
   /**
-   * Wallet client for user mutations
+   * Wallet application operations (user mutations)
    * Only available when wallet is connected (uses wallet chain)
    */
-  readonly walletClient?: WalletClient;
-
-  /**
-   * @deprecated Use publicClient.query() instead
-   * Execute a GraphQL query
-   */
-  query<T = unknown>(gql: string, blockHash?: string): Promise<T>;
-
-  /**
-   * @deprecated Use publicClient.systemMutate() or walletClient.mutate() instead
-   * Execute a GraphQL mutation (requires full client or operationType: SYSTEM)
-   */
-  mutate<T = unknown>(gql: string, options?: MutateOptions | string): Promise<T>;
-
-  /**
-   * @deprecated Use publicClient.queryChain() instead
-   * Query any chain by ID via HTTP (no need to claim it)
-   * @param chainId - Target chain ID to query
-   * @param gql - GraphQL query string
-   */
-  queryChain<T = unknown>(chainId: string, gql: string): Promise<T>;
+  readonly wallet?: WalletApp;
 }
 
 /**
@@ -254,8 +209,14 @@ export interface ILineraClientManager {
   /** Get current client state */
   getState(): ClientState;
 
-  /** Get raw Linera client instance */
-  getClient(): Client | Promise<Client> | null;
+  /** Get public client (for queries and system operations) */
+  getPublicClient(): Client | null;
+
+  /** Get wallet client (for user mutations) */
+  getWalletClient(): Client | null;
+
+  /** Get a Linera chain */
+  getChain(chainId: string): Promise<Chain>;
 
   /** Get current wallet instance */
   getWallet(): Wallet | null;
@@ -275,6 +236,9 @@ export interface ILineraClientManager {
   /** Get application interface */
   getApplication(appId: string): Promise<ApplicationClient | null>;
 
+  /** Get application interface for a specific chain */
+  getChainApplication(chainId: string, appId: string): Promise<ChainApp | null>;
+
   /** Check if client can perform write operations */
   canWrite(): boolean;
 
@@ -288,6 +252,29 @@ export interface ILineraClientManager {
    * reinitialize client, useful when 'runtime' error occur
    */
   reinit(): Promise<void>;
+}
+
+/**
+ * Complete Linera WASM module interface
+ */
+export interface LineraModule {
+  /** WASM initialization function (default export) */
+  default: typeof initialize;
+
+  /** Client constructor */
+  Client: typeof Client;
+
+  /** Faucet constructor */
+  Faucet: typeof Faucet;
+
+  /** Application class (not directly constructed, obtained from Frontend) */
+  Application: typeof Application;
+
+  /** Wallet class (not directly constructed, obtained from Faucet) */
+  Wallet: typeof Wallet;
+
+  /** Signer interface (implemented by user) */
+  Signer: typeof Signer;
 }
 
 /**

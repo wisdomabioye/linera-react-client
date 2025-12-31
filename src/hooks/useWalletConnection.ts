@@ -6,7 +6,7 @@
 
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { MetaMaskSigner, isMetaMaskInstalled } from '../lib/signers/metamask-signer';
 import { getLineraClientManager } from '../lib/linera/client-manager';
 import { useLineraClient } from './useLineraClient';
@@ -61,11 +61,6 @@ export function useWalletConnection(): UseWalletConnectionReturn {
 
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<Error | undefined>(clientError);
-
-  // Sync client error to local state
-  useEffect(() => {
-    setError(clientError);
-  }, [clientError]);
 
   /**
    * Connect MetaMask wallet
@@ -128,6 +123,10 @@ export function useWalletConnection(): UseWalletConnectionReturn {
     }
   }, [clientManager]);
 
+  // Use ref to access latest disconnect without adding to effect deps
+  const disconnectRef = useRef(disconnect);
+  disconnectRef.current = disconnect;
+
   /**
    * Listen for MetaMask account changes
    */
@@ -142,7 +141,7 @@ export function useWalletConnection(): UseWalletConnectionReturn {
       if (accountList.length === 0) {
         // User disconnected all accounts
         logger.info('[useWalletConnection] MetaMask accounts disconnected');
-        await disconnect();
+        await disconnectRef.current();
       } else if (isConnected) {
         // Account switched
         logger.info('[useWalletConnection] MetaMask account changed, switching wallet...');
@@ -161,9 +160,10 @@ export function useWalletConnection(): UseWalletConnectionReturn {
     return () => {
       window.ethereum?.removeListener('accountsChanged', handleAccountsChanged);
     };
-  }, [clientManager, isConnected, disconnect]);
+  }, [isConnected]);
 
-  return {
+  // Memoize return object to prevent unnecessary re-renders
+  return useMemo(() => ({
     isMetaMaskInstalled: isMetaMaskInstalled(),
     isConnected,
     isConnecting,
@@ -171,5 +171,5 @@ export function useWalletConnection(): UseWalletConnectionReturn {
     error,
     connect,
     disconnect,
-  };
+  }), [isConnected, isConnecting, walletAddress, error, connect, disconnect]);
 }

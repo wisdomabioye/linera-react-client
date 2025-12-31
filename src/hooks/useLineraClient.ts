@@ -7,7 +7,7 @@
 'use client';
 import type { Client, Wallet } from '@linera/client';
 import { type ClientState, type ApplicationClient, ClientMode } from '../lib/linera/types';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getLineraClientManager } from '../lib/linera/client-manager';
 import { logger } from '../utils/logger';
 
@@ -106,7 +106,10 @@ export function useLineraClient(): UseLineraClientReturn {
     return clientManager.getApplication(appId);
   }, [clientManager]);
 
-  return {
+
+
+
+  return useMemo(() => ({
     state,
     publicClient: clientManager?.getPublicClient() || null,
     walletClient: clientManager?.getWalletClient() || null,
@@ -121,5 +124,18 @@ export function useLineraClient(): UseLineraClientReturn {
     canWrite: clientManager?.canWrite() || false,
     error: state.error,
     getApplication,
-  };
+  }), [
+    // Depend on specific state properties (primitives) not the object itself
+    state.mode,
+    state.isInitialized,
+    state.hasWallet,
+    state.walletAddress,
+    state.publicAddress,
+    state.publicChainId,
+    state.walletChainId,
+    state.faucetUrl,
+    state.error,
+    clientManager,
+    getApplication,
+  ]);
 }

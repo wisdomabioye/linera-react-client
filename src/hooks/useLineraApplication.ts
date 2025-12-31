@@ -6,7 +6,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { ApplicationClient } from '../lib/linera/types';
 import { useLineraClient } from './useLineraClient';
 import { logger } from '../utils/logger';
@@ -97,10 +97,11 @@ export function useLineraApplication(appId: string): UseLineraApplicationReturn 
     };
   }, [appId, getApplication, isInitialized, canWrite]); // Re-load when canWrite changes
 
-  return {
+  // Memoize return object to prevent unnecessary re-renders
+  return useMemo(() => ({
     app,
     isReady: app !== null && !isLoading,
     isLoading,
     canWrite
-  };
+  }), [app, isLoading, canWrite]);
 }

@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { ChainApp } from '../lib/linera/types';
 import { getLineraClientManager } from '@/lib/linera';
 import { useLineraClient } from './useLineraClient';
@@ -149,12 +149,13 @@ export function useChainApplication(
     };
   }, [chainId, appId, isInitialized]);
 
-  return {
+  // Memoize return object to prevent unnecessary re-renders
+  return useMemo(() => ({
     app,
     isReady: app !== null && !isLoading && !error,
     isLoading,
     error,
     chainId,
     appId,
-  };
+  }), [app, isLoading, error, chainId, appId]);
 }

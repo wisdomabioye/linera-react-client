@@ -82,30 +82,10 @@ export function useChainApplication(
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    // Don't load if not initialized yet
-    if (!isInitialized) {
-      setIsLoading(true);
-      return;
-    }
-
-    // Validate inputs
-    if (!chainId || chainId.trim() === '') {
-      const err = new Error('chainId is required and cannot be empty');
-      logger.error('[useChainApplication]', err);
-      setError(err);
-      setApp(null);
-      setIsLoading(false);
-      return;
-    }
-
-    if (!appId || appId.trim() === '') {
-      const err = new Error('appId is required and cannot be empty');
-      logger.error('[useChainApplication]', err);
-      setError(err);
-      setApp(null);
-      setIsLoading(false);
-      return;
-    }
+    // Early returns for "not applicable" states
+    if (!isInitialized) return;
+    if (!chainId || chainId.trim() === '') return;
+    if (!appId || appId.trim() === '') return;
 
     let cancelled = false;
 
@@ -150,12 +130,26 @@ export function useChainApplication(
   }, [chainId, appId, isInitialized]);
 
   // Memoize return object to prevent unnecessary re-renders
-  return useMemo(() => ({
-    app,
-    isReady: app !== null && !isLoading && !error,
-    isLoading,
-    error,
-    chainId,
-    appId,
-  }), [app, isLoading, error, chainId, appId]);
+  return useMemo(() => {
+    // Handle "not applicable" state - chainId or appId is empty
+    if (!chainId || chainId.trim() === '' || !appId || appId.trim() === '') {
+      return {
+        app: null,
+        isReady: false,
+        isLoading: false,
+        error: null,
+        chainId,
+        appId,
+      };
+    }
+
+    return {
+      app,
+      isReady: app !== null && !isLoading && !error,
+      isLoading,
+      error,
+      chainId,
+      appId,
+    };
+  }, [app, isLoading, error, chainId, appId]);
 }

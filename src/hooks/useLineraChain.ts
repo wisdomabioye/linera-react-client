@@ -56,21 +56,9 @@ export function useLineraChain(chainId: string): UseLineraChainReturn {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    // Don't load if not initialized yet
-    if (!isInitialized || !publicClient) {
-      setIsLoading(true);
-      return;
-    }
-
-    // Validate chainId
-    if (!chainId || chainId.trim() === '') {
-      const err = new Error('chainId is required and cannot be empty');
-      logger.error('[useLineraChain]', err);
-      setError(err);
-      setChain(null);
-      setIsLoading(false);
-      return;
-    }
+    // Early returns for "not applicable" states
+    if (!isInitialized || !publicClient) return;
+    if (!chainId || chainId.trim() === '') return;
 
     let cancelled = false;
 
@@ -111,11 +99,24 @@ export function useLineraChain(chainId: string): UseLineraChainReturn {
   }, [chainId, isInitialized, publicClient]);
 
   // Memoize return object to prevent unnecessary re-renders
-  return useMemo(() => ({
-    chain,
-    isReady: chain !== null && !isLoading && !error,
-    isLoading,
-    error,
-    chainId,
-  }), [chain, isLoading, error, chainId]);
+  return useMemo(() => {
+    // Handle "not applicable" state - chainId is empty
+    if (!chainId || chainId.trim() === '') {
+      return {
+        chain: null,
+        isReady: false,
+        isLoading: false,
+        error: null,
+        chainId,
+      };
+    }
+
+    return {
+      chain,
+      isReady: chain !== null && !isLoading && !error,
+      isLoading,
+      error,
+      chainId,
+    };
+  }, [chain, isLoading, error, chainId]);
 }

@@ -330,6 +330,12 @@ export class LineraClientManager implements ILineraClientManager {
    * @returns ApplicationClient with public and wallet access
    */
   async getApplication(appId: string): Promise<ApplicationClient | null> {
+    // Guard against empty/invalid appId
+    if (!appId || !appId.trim()) {
+      logger.warn('[ClientManager] Invalid appId provided (empty or whitespace)');
+      return null;
+    }
+
     if (!this.publicClient) {
       logger.warn('[ClientManager] Client not initialized');
       return null;

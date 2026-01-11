@@ -72,14 +72,23 @@ export function useLineraApplication(appId: string): UseLineraApplicationReturn 
 
     let cancelled = false;
 
+    // CRITICAL: Clear app immediately when appId changes to prevent stale data
+    setApp(null);
+    setIsLoading(true);
+
     const loadApp = async () => {
       try {
-        setIsLoading(true);
         const appInstance = await getApplication(appId);
 
-        if (!cancelled) {
+        // CRITICAL: Verify appInstance matches current appId to prevent race conditions
+        if (!cancelled && appInstance?.appId === appId) {
           setApp(appInstance);
           setIsLoading(false);
+        } else if (!cancelled) {
+          logger.warn('[useApplication] App instance mismatch, discarding:', {
+            expected: appId.slice(0, 8),
+            received: appInstance?.appId?.slice(0, 8)
+          });
         }
       } catch (error) {
         logger.error('[useApplication] Failed to load application:', error);
@@ -95,7 +104,7 @@ export function useLineraApplication(appId: string): UseLineraApplicationReturn 
     return () => {
       cancelled = true;
     };
-  }, [appId, getApplication, isInitialized, canWrite]); // Re-load when canWrite changes
+  }, [appId, getApplication, isInitialized, canWrite]);
 
   // Memoize return object to prevent unnecessary re-renders
   return useMemo(() => ({

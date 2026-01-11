@@ -1,3 +1,13 @@
+# [1.3.0](https://github.com/wisdomabioye/linera-react-client/compare/v1.2.10...v1.3.0) (2026-01-11)
+
+
+### Features
+
+* enforce client-side initialization for Linera client manager ([39bc358](https://github.com/wisdomabioye/linera-react-client/commit/39bc3586e41919c6821ec26cecf2e1e9c4ba5d45))
+* enhance uselineraapplication and lineraclientmanager with appid validation and state mgmt ([660ad63](https://github.com/wisdomabioye/linera-react-client/commit/660ad63a56dc1b59bd26a9ca78ac19e0f21c4efa))
+* implement caching for chain and application clients ([0a52be3](https://github.com/wisdomabioye/linera-react-client/commit/0a52be3628253649322f51f84db86a8cfc41c974))
+* optimize hooks using use memo ([e3a5a78](https://github.com/wisdomabioye/linera-react-client/commit/e3a5a78f7dcfbb12d83c599cb898b081ef5c93cd))
+
 ## [1.2.10](https://github.com/wisdomabioye/linera-react-client/compare/v1.2.9...v1.2.10) (2025-12-15)
 
 

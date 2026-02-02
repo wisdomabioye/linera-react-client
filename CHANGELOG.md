@@ -1,3 +1,11 @@
+# [1.4.0](https://github.com/wisdomabioye/linera-react-client/compare/v1.3.0...v1.4.0) (2026-02-02)
+
+
+### Features
+
+* improve cache invalidation logic ([f97b78b](https://github.com/wisdomabioye/linera-react-client/commit/f97b78b039b4fc10fe2af25609c4eeea33a8563c))
+* update linera-client ([7ba55b6](https://github.com/wisdomabioye/linera-react-client/commit/7ba55b6f8793bb5ee40abaa5cb33a2ae2a690580))
+
 # [1.3.0](https://github.com/wisdomabioye/linera-react-client/compare/v1.2.10...v1.3.0) (2026-01-11)
 
 

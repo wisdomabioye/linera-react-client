@@ -256,11 +256,12 @@ export class LineraClientManager implements ILineraClientManager {
       );
       this.walletClient = await Promise.resolve(clientInstance);
 
+      // Invalidate application cache BEFORE notifying state change
+      // This prevents race conditions where listeners receive stale cached data
+      this.invalidateAppCache();
+
       this.mode = ClientMode.FULL;
       this.notifyStateChange();
-
-      // Invalidate application cache (walletApp changed)
-      this.invalidateAppCache();
 
       logger.info('[ClientManager] Wallet connected successfully');
       logger.info('[ClientManager] Public chain (queries/subscriptions):', this.publicChainId);
@@ -303,12 +304,13 @@ export class LineraClientManager implements ILineraClientManager {
     // this.publicWallet - still active
     // this.publicChainId - still active
 
+    // Invalidate application cache BEFORE notifying state change
+    // This prevents race conditions where listeners receive stale cached data
+    this.invalidateAppCache();
+
     // Revert to READ_ONLY mode (public chain still active)
     this.mode = ClientMode.READ_ONLY;
     this.notifyStateChange();
-
-    // Invalidate application cache (walletApp removed)
-    this.invalidateAppCache();
 
     logger.info('[ClientManager] Wallet disconnected');
     logger.info('[ClientManager] Public chain still active:', this.publicChainId);

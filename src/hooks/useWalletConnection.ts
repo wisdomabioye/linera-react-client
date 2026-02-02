@@ -160,7 +160,7 @@ export function useWalletConnection(): UseWalletConnectionReturn {
     return () => {
       window.ethereum?.removeListener('accountsChanged', handleAccountsChanged);
     };
-  }, [isConnected]);
+  }, [isConnected, clientManager]);
 
   // Memoize return object to prevent unnecessary re-renders
   return useMemo(() => ({

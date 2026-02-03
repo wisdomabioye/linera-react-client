@@ -159,7 +159,20 @@ export class LineraClientManager implements ILineraClientManager {
         this.publicWallet,
         this.publicSigner,
         {
-          skipProcessInbox: this.config.skipProcessInbox || false
+          skipProcessInbox: this.config.skipProcessInbox || false,
+          cacheTtlMs: 0,                                                                                                                                                                            
+          cacheMaxSize: 0,                                                                                                                                                                          
+          maxRequestTtlMs: 1000,                                                                                                                                                                    
+          sendTimeout: { secs: 5, nanos: 0 },                                                                                                                                                       
+          recvTimeout: { secs: 10, nanos: 0 },                                                                                                                                                      
+          retryDelay: { secs: 1, nanos: 0 },                                                                                                                                                        
+          maxRetries: 3,                                                                                                                                                                            
+          allowFastBlocks: true,                                                                                                                                                                    
+          longLivedServices: true,                                                                                                                                                                  
+          chainWorkerTtl: { secs: 300, nanos: 0 },                                                                                                                                                  
+          quorumGracePeriod: 0,                                                                                                                                                                     
+          blobDownloadTimeout: { secs: 5, nanos: 0 },                                                                                                                                               
+          alternativePeersRetryDelayMs: 500,    
         }
       );
       this.publicClient = await Promise.resolve(clientInstance);
@@ -251,7 +264,20 @@ export class LineraClientManager implements ILineraClientManager {
         this.walletWallet as Wallet,
         this.walletSigner,
         {
-          skipProcessInbox: this.config.skipProcessInbox || false
+          skipProcessInbox: this.config.skipProcessInbox || false,
+          cacheTtlMs: 0,                                                                                                                                                                            
+          cacheMaxSize: 0,                                                                                                                                                                          
+          maxRequestTtlMs: 1000,                                                                                                                                                                    
+          sendTimeout: { secs: 5, nanos: 0 },                                                                                                                                                       
+          recvTimeout: { secs: 10, nanos: 0 },                                                                                                                                                      
+          retryDelay: { secs: 1, nanos: 0 },                                                                                                                                                        
+          maxRetries: 3,                                                                                                                                                                            
+          allowFastBlocks: true,                                                                                                                                                                    
+          longLivedServices: true,                                                                                                                                                                  
+          chainWorkerTtl: { secs: 300, nanos: 0 },                                                                                                                                                  
+          quorumGracePeriod: 0,                                                                                                                                                                     
+          blobDownloadTimeout: { secs: 5, nanos: 0 },                                                                                                                                               
+          alternativePeersRetryDelayMs: 500,    
         }
       );
       this.walletClient = await Promise.resolve(clientInstance);

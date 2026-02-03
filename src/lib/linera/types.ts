@@ -4,7 +4,7 @@
  * Core type definitions for Linera client management
  */
 
-import type { Client, Wallet, Signer, Application, Chain, Faucet, QueryOptions, initialize, Options as ClientOptions, signer} from '@linera/client';
+import type { Client, Wallet, Signer, Application, Chain, Faucet, QueryOptions, initialize, Options as ClientOptions} from '@linera/client';
 
 /**
  * Client operational modes

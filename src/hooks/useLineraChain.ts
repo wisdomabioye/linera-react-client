@@ -6,8 +6,8 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
 import type { Chain } from '@linera/client';
+import { useState, useEffect, useMemo } from 'react';
 import { useLineraClient } from './useLineraClient';
 import { getLineraClientManager } from '../lib/linera';
 import { logger } from '../utils/logger';

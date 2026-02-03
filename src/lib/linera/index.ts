@@ -1,3 +1,4 @@
+'use client';
 /**
  * Linera Client Library
  *

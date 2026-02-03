@@ -56,7 +56,7 @@ export type { TemporarySignerOptions } from './lib/linera/temporary-signer';
 export {
   MetaMaskSigner,
   isMetaMaskInstalled,
-} from './lib/signers';
+} from './lib/signers/metamask-signer';
 
 // Logging
 export {

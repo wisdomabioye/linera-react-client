@@ -1,3 +1,4 @@
+'use client';
 /**
  * Linera Client Manager
  *
@@ -20,13 +21,12 @@ import {
   ClientMode,
   ClientState,
   ClientConfig,
-  LineraModule,
   ApplicationClient,
   ChainApp,
   StateChangeCallback,
   ILineraClientManager,
 } from './types';
-import { TemporarySigner, PrivateKey, Composite } from '../signers';
+import { TemporarySigner } from './temporary-signer';
 import { ApplicationClientImpl, ChainApplicationClient } from './application-client';
 import { logger } from '../../utils/logger';
 
@@ -39,7 +39,7 @@ export class LineraClientManager implements ILineraClientManager {
   // Public chain resources (temporary signer, always available after initialization)
   private publicClient: Client | null = null;
   private publicWallet: Wallet | null = null;
-  private publicAutosigner: PrivateKey | null = null;
+  // private publicAutosigner: signer.PrivateKey | null = null;
   private publicChainId: string | null = null;
   private publicAddress: string | null = null;
 
@@ -47,14 +47,13 @@ export class LineraClientManager implements ILineraClientManager {
   private walletClient: Client | null = null;
   private walletWallet: Wallet | null = null;
   private walletSigner: SignerWithAddress | null = null;
-  private walletAutosigner: PrivateKey | null = null;
+  // private walletAutosigner: signer.PrivateKey | null = null;
   private walletChainId: string | null = null;
   private walletAddress: string | null = null;
 
   private mode: ClientMode = ClientMode.UNINITIALIZED;
   private config: ClientConfig;
   private stateListeners: Set<StateChangeCallback> = new Set();
-  private lineraModule: LineraModule | null = null;
   private faucet: Faucet | null = null;
 
   // ============================================
@@ -123,14 +122,12 @@ export class LineraClientManager implements ILineraClientManager {
     try {
       logger.info('[ClientManager] Initializing read-only mode...');
 
-      // Load Linera module
-      this.lineraModule = await this.loadLinera();
-      const { Client, Faucet, default: init } = this.lineraModule;
-      
+      const linera = await import('@linera/client'); 
+
       // Initialize WASM
-      await init();
+      await linera.initialize();
       // Create faucet
-      this.faucet = new Faucet(this.config.faucetUrl);
+      this.faucet = new linera.Faucet(this.config.faucetUrl);
 
       if (!this.faucet) {
         logger.error('[ClientManager] Failed to instantiate Faucet');
@@ -148,8 +145,8 @@ export class LineraClientManager implements ILineraClientManager {
       this.publicAddress = tempOwner;
 
       // Create autosigner for automatic inbox processing
-      this.publicAutosigner = PrivateKey.createRandom();
-      const compositeSigner = new Composite(this.publicAutosigner, tempSigner);
+      // this.publicAutosigner = linera.signer.PrivateKey.createRandom();
+      // const compositeSigner = new linera.signer.Composite(this.publicAutosigner, tempSigner);
 
       // Claim PUBLIC chain for queries and subscriptions
       logger.info('[ClientManager] Claiming public chain for queries/subscriptions...');
@@ -159,9 +156,9 @@ export class LineraClientManager implements ILineraClientManager {
       // Create public client with composite signer
       // Note: Client constructor may return a Promise in WASM environment
      
-      const clientInstance = new Client(
+      const clientInstance = new linera.Client(
         this.publicWallet,
-        compositeSigner,
+        tempSigner,
         {
           ...this.config.init
         }
@@ -170,9 +167,9 @@ export class LineraClientManager implements ILineraClientManager {
 
       // Enable autosigning: register the autosigner as a chain owner
       // and set it as default so inbox processing happens automatically
-      const publicChain = await this.publicClient.chain(this.publicChainId);
-      await publicChain.addOwner(this.publicAutosigner.address());
-      await this.publicWallet.setOwner(this.publicChainId, this.publicAutosigner.address());
+      // const publicChain = await this.publicClient.chain(this.publicChainId);
+      // await publicChain.addOwner(this.publicAutosigner.address());
+      // await this.publicWallet.setOwner(this.publicChainId, this.publicAutosigner.address());
 
       this.mode = ClientMode.READ_ONLY;
       this.notifyStateChange();
@@ -236,12 +233,12 @@ export class LineraClientManager implements ILineraClientManager {
         this.walletWallet = null;
       }
 
-      const { Faucet, default: init } = this.lineraModule as LineraModule;
+      const linera = await import('@linera/client'); 
 
       // Create wallet wallet from faucet
       if (!this.faucet) {
-        await init();
-        this.faucet = new Faucet(this.config.faucetUrl);
+        await linera.initialize();
+        this.faucet = new linera.Faucet(this.config.faucetUrl);
       }
 
       this.walletWallet = await this.faucet!.createWallet();
@@ -256,16 +253,13 @@ export class LineraClientManager implements ILineraClientManager {
       this.walletAddress = owner;
 
       // Create autosigner for automatic inbox processing
-      this.walletAutosigner = PrivateKey.createRandom();
-      const compositeSigner = new Composite(this.walletAutosigner, metamaskSigner);
-
-      // Create wallet client with composite signer
-      const { Client } = this.lineraModule as LineraModule;
+      // this.walletAutosigner = linera.signer.PrivateKey.createRandom();
+      // const compositeSigner = new linera.signer.Composite(this.walletAutosigner, metamaskSigner);
 
       // Note: Client constructor may return a Promise in WASM environment
-      const clientInstance = new Client(
+      const clientInstance = new linera.Client(
         this.walletWallet as Wallet,
-        compositeSigner,
+        metamaskSigner,
         {
           ...this.config.init
         }
@@ -274,9 +268,9 @@ export class LineraClientManager implements ILineraClientManager {
 
       // Enable autosigning: register the autosigner as a chain owner
       // and set it as default so inbox processing happens automatically
-      const walletChain = await this.walletClient.chain(this.walletChainId!);
-      await walletChain.addOwner(this.walletAutosigner.address());
-      await this.walletWallet!.setOwner(this.walletChainId!, this.walletAutosigner.address());
+      // const walletChain = await this.walletClient.chain(this.walletChainId!);
+      // await walletChain.addOwner(this.walletAutosigner.address());
+      // await this.walletWallet!.setOwner(this.walletChainId!, this.walletAutosigner.address());
 
       // Invalidate application cache BEFORE notifying state change
       // This prevents race conditions where listeners receive stale cached data
@@ -318,7 +312,7 @@ export class LineraClientManager implements ILineraClientManager {
     this.walletClient = null;
     this.walletWallet = null;
     this.walletSigner = null;
-    this.walletAutosigner = null;
+    // this.walletAutosigner = null;
     this.walletChainId = null;
     this.walletAddress = null;
 
@@ -569,14 +563,14 @@ export class LineraClientManager implements ILineraClientManager {
 
     this.publicClient = null;
     this.publicWallet = null;
-    this.publicAutosigner = null;
+    // this.publicAutosigner = null;
     this.publicChainId = null;
     this.publicAddress = null;
 
     this.walletClient = null;
     this.walletWallet = null;
     this.walletSigner = null;
-    this.walletAutosigner = null;
+    // this.walletAutosigner = null;
     this.walletChainId = null;
     this.walletAddress = null;
 
@@ -627,27 +621,6 @@ export class LineraClientManager implements ILineraClientManager {
     this.chainCache.clear();
     this.appCache.clear();
     this.cachedWalletChain = null;
-  }
-
-  /**
-   * Load Linera module
-   */
-  private async loadLinera(): Promise<LineraModule> {
-    // Directly load the Linera WebAssembly module from the public directory
-    // Using a function wrapper to bypass Turbopack's static analysis
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const moduleUrl = `${origin}/linera/wasm/index.js`;
-
-    logger.info('Loading Linera module from:', moduleUrl);
-
-    // Use Function constructor to create dynamic import that Turbopack can't analyze
-    // This bypasses static analysis while still loading the module at runtime
-    const loadModule = new Function('url', 'return import(url)');
-    const lineraModule = await loadModule(moduleUrl) as LineraModule;
-
-    logger.info('Linera module loaded:', lineraModule);
-
-    return lineraModule;
   }
 
   /**

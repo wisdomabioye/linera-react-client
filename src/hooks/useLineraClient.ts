@@ -6,8 +6,8 @@
 
 'use client';
 import type { Client, Wallet } from '@linera/client';
-import { type ClientState, type ApplicationClient, ClientMode } from '../lib/linera/types';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { type ClientState, type ApplicationClient, ClientMode } from '../lib/linera/types';
 import { getLineraClientManager } from '../lib/linera/client-manager';
 import { logger } from '../utils/logger';
 

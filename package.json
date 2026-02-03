@@ -10,26 +10,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
-    },
-    "./config/nextjs": {
-      "types": "./dist/config/nextjs.d.ts",
-      "import": "./dist/config/nextjs.mjs",
-      "require": "./dist/config/nextjs.js"
-    },
-    "./config/vite": {
-      "types": "./dist/config/vite.d.ts",
-      "import": "./dist/config/vite.mjs",
-      "require": "./dist/config/vite.js"
-    },
-    "./config/craco": {
-      "types": "./dist/config/craco.d.ts",
-      "import": "./dist/config/craco.mjs",
-      "require": "./dist/config/craco.js"
-    },
-    "./config/webpack": {
-      "types": "./dist/config/webpack.d.ts",
-      "import": "./dist/config/webpack.mjs",
-      "require": "./dist/config/webpack.js"
     }
   },
   "files": [
@@ -37,19 +17,14 @@
     "dist/**/*.mjs",
     "dist/**/*.d.ts",
     "!dist/**/*.d.mts",
-    "scripts/postinstall.min.js",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsup",
-    "build:scripts": "npx terser scripts/postinstall.js -o scripts/postinstall.min.js -c -m --comments false",
     "dev": "tsup --watch",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build:scripts && npm run build",
-    "postinstall": "node scripts/postinstall.min.js",
-    "linera:copy": "node scripts/postinstall.min.js",
     "prepare": "husky",
     "release": "semantic-release"
   },
@@ -91,13 +66,11 @@
     "@types/react-dom": "^18.2.18",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.6",
-    "next": "^16.0.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "semantic-release": "^25.0.2",
     "tsup": "^8.0.1",
-    "typescript": "^5.3.3",
-    "vite": "^7.2.2"
+    "typescript": "^5.3.3"
   },
   "release": {
     "branches": [

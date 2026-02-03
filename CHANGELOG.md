@@ -1,3 +1,10 @@
+## [1.4.1](https://github.com/wisdomabioye/linera-react-client/compare/v1.4.0...v1.4.1) (2026-02-03)
+
+
+### Bug Fixes
+
+* exposelinera init client options to consumer ([78d558d](https://github.com/wisdomabioye/linera-react-client/commit/78d558d756a73528dfb4be099193ec4eb0f73d0b))
+
 # [1.4.0](https://github.com/wisdomabioye/linera-react-client/compare/v1.3.0...v1.4.0) (2026-02-02)
 
 

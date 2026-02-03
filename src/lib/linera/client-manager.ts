@@ -26,7 +26,7 @@ import {
   StateChangeCallback,
   ILineraClientManager,
 } from './types';
-import { TemporarySigner } from './temporary-signer';
+import { TemporarySigner, PrivateKey, Composite } from '../signers';
 import { ApplicationClientImpl, ChainApplicationClient } from './application-client';
 import { logger } from '../../utils/logger';
 
@@ -39,7 +39,7 @@ export class LineraClientManager implements ILineraClientManager {
   // Public chain resources (temporary signer, always available after initialization)
   private publicClient: Client | null = null;
   private publicWallet: Wallet | null = null;
-  private publicSigner: SignerWithAddress | null = null;
+  private publicAutosigner: PrivateKey | null = null;
   private publicChainId: string | null = null;
   private publicAddress: string | null = null;
 
@@ -47,6 +47,7 @@ export class LineraClientManager implements ILineraClientManager {
   private walletClient: Client | null = null;
   private walletWallet: Wallet | null = null;
   private walletSigner: SignerWithAddress | null = null;
+  private walletAutosigner: PrivateKey | null = null;
   private walletChainId: string | null = null;
   private walletAddress: string | null = null;
 
@@ -125,10 +126,9 @@ export class LineraClientManager implements ILineraClientManager {
       // Load Linera module
       this.lineraModule = await this.loadLinera();
       const { Client, Faucet, default: init } = this.lineraModule;
-
+      
       // Initialize WASM
       await init();
-
       // Create faucet
       this.faucet = new Faucet(this.config.faucetUrl);
 
@@ -142,40 +142,37 @@ export class LineraClientManager implements ILineraClientManager {
 
       // Create temporary signer for public chain
       const tempSigner = new TemporarySigner(this.config.readOnlyWallet);
-      this.publicSigner = tempSigner;
 
       // Get temporary address
       const tempOwner = await tempSigner.address();
       this.publicAddress = tempOwner;
+
+      // Create autosigner for automatic inbox processing
+      this.publicAutosigner = PrivateKey.createRandom();
+      const compositeSigner = new Composite(this.publicAutosigner, tempSigner);
 
       // Claim PUBLIC chain for queries and subscriptions
       logger.info('[ClientManager] Claiming public chain for queries/subscriptions...');
       this.publicChainId = await this.faucet.claimChain(this.publicWallet, tempOwner);
       logger.info('[ClientManager] Public chain claimed:', this.publicChainId);
 
-      // Create public client
+      // Create public client with composite signer
       // Note: Client constructor may return a Promise in WASM environment
+     
       const clientInstance = new Client(
         this.publicWallet,
-        this.publicSigner,
+        compositeSigner,
         {
-          skipProcessInbox: this.config.skipProcessInbox || false,
-          cacheTtlMs: 0,                                                                                                                                                                            
-          cacheMaxSize: 0,                                                                                                                                                                          
-          maxRequestTtlMs: 1000,                                                                                                                                                                    
-          sendTimeout: { secs: 5, nanos: 0 },                                                                                                                                                       
-          recvTimeout: { secs: 10, nanos: 0 },                                                                                                                                                      
-          retryDelay: { secs: 1, nanos: 0 },                                                                                                                                                        
-          maxRetries: 3,                                                                                                                                                                            
-          allowFastBlocks: true,                                                                                                                                                                    
-          longLivedServices: true,                                                                                                                                                                  
-          chainWorkerTtl: { secs: 300, nanos: 0 },                                                                                                                                                  
-          quorumGracePeriod: 0,                                                                                                                                                                     
-          blobDownloadTimeout: { secs: 5, nanos: 0 },                                                                                                                                               
-          alternativePeersRetryDelayMs: 500,    
+          ...this.config.init
         }
       );
       this.publicClient = await Promise.resolve(clientInstance);
+
+      // Enable autosigning: register the autosigner as a chain owner
+      // and set it as default so inbox processing happens automatically
+      const publicChain = await this.publicClient.chain(this.publicChainId);
+      await publicChain.addOwner(this.publicAutosigner.address());
+      await this.publicWallet.setOwner(this.publicChainId, this.publicAutosigner.address());
 
       this.mode = ClientMode.READ_ONLY;
       this.notifyStateChange();
@@ -239,9 +236,10 @@ export class LineraClientManager implements ILineraClientManager {
         this.walletWallet = null;
       }
 
+      const { Faucet, default: init } = this.lineraModule as LineraModule;
+
       // Create wallet wallet from faucet
       if (!this.faucet) {
-        const { Faucet, default: init } = this.lineraModule as LineraModule;
         await init();
         this.faucet = new Faucet(this.config.faucetUrl);
       }
@@ -257,30 +255,28 @@ export class LineraClientManager implements ILineraClientManager {
       this.walletSigner = metamaskSigner;
       this.walletAddress = owner;
 
-      // Create wallet client
+      // Create autosigner for automatic inbox processing
+      this.walletAutosigner = PrivateKey.createRandom();
+      const compositeSigner = new Composite(this.walletAutosigner, metamaskSigner);
+
+      // Create wallet client with composite signer
       const { Client } = this.lineraModule as LineraModule;
+
       // Note: Client constructor may return a Promise in WASM environment
       const clientInstance = new Client(
         this.walletWallet as Wallet,
-        this.walletSigner,
+        compositeSigner,
         {
-          skipProcessInbox: this.config.skipProcessInbox || false,
-          cacheTtlMs: 0,                                                                                                                                                                            
-          cacheMaxSize: 0,                                                                                                                                                                          
-          maxRequestTtlMs: 1000,                                                                                                                                                                    
-          sendTimeout: { secs: 5, nanos: 0 },                                                                                                                                                       
-          recvTimeout: { secs: 10, nanos: 0 },                                                                                                                                                      
-          retryDelay: { secs: 1, nanos: 0 },                                                                                                                                                        
-          maxRetries: 3,                                                                                                                                                                            
-          allowFastBlocks: true,                                                                                                                                                                    
-          longLivedServices: true,                                                                                                                                                                  
-          chainWorkerTtl: { secs: 300, nanos: 0 },                                                                                                                                                  
-          quorumGracePeriod: 0,                                                                                                                                                                     
-          blobDownloadTimeout: { secs: 5, nanos: 0 },                                                                                                                                               
-          alternativePeersRetryDelayMs: 500,    
+          ...this.config.init
         }
       );
       this.walletClient = await Promise.resolve(clientInstance);
+
+      // Enable autosigning: register the autosigner as a chain owner
+      // and set it as default so inbox processing happens automatically
+      const walletChain = await this.walletClient.chain(this.walletChainId!);
+      await walletChain.addOwner(this.walletAutosigner.address());
+      await this.walletWallet!.setOwner(this.walletChainId!, this.walletAutosigner.address());
 
       // Invalidate application cache BEFORE notifying state change
       // This prevents race conditions where listeners receive stale cached data
@@ -322,6 +318,7 @@ export class LineraClientManager implements ILineraClientManager {
     this.walletClient = null;
     this.walletWallet = null;
     this.walletSigner = null;
+    this.walletAutosigner = null;
     this.walletChainId = null;
     this.walletAddress = null;
 
@@ -572,13 +569,14 @@ export class LineraClientManager implements ILineraClientManager {
 
     this.publicClient = null;
     this.publicWallet = null;
-    this.publicSigner = null;
+    this.publicAutosigner = null;
     this.publicChainId = null;
     this.publicAddress = null;
 
     this.walletClient = null;
     this.walletWallet = null;
     this.walletSigner = null;
+    this.walletAutosigner = null;
     this.walletChainId = null;
     this.walletAddress = null;
 
@@ -586,111 +584,6 @@ export class LineraClientManager implements ILineraClientManager {
     this.stateListeners.clear();
 
     this.notifyStateChange();
-  }
-
-  /**
-   * Robust reinit: attempt a full deterministic restart.
-   *
-   * Strategy:
-   * 1. Try a best-effort destroy (don't let its errors stop progress).
-   * 2. Force-clear any lingering references (free() where available).
-   * 3. Reload the linera module and init the wasm (init()).
-   * 4. Recreate public client (and reconnect wallet signer if present).
-   * 5. If anything irrecoverable happens, perform a hard reload.
-   */
-  async reinit(): Promise<void> {
-    logger.info('[ClientManager] reinit(): starting full restart');
-
-    // Preserve wallet signer so we can try to reconnect it after reinit
-    const previousWalletSigner = this.walletSigner;
-    const hadWallet = !!previousWalletSigner;
-
-    // 1) Best-effort destroy but never abort on error
-    try {
-      // destroy() may throw if wasm is corrupted — catch and proceed
-      await this.destroy();
-    } catch (destroyErr) {
-      logger.warn('[ClientManager] reinit(): destroy() threw, continuing anyway', destroyErr);
-      // proceed to forced cleanup below
-    }
-
-    // 2) Forced cleanup of any lingering references (ignore errors)
-    // Clear caches (in case destroy() threw)
-    this.clearAllCaches();
-
-    try {
-      if (this.publicClient) {
-        try { (this.publicClient as any).free?.(); } catch (e) { logger.debug('[ClientManager] publicClient.free() failed', e); }
-      }
-    } catch (e) { logger.debug('[ClientManager] ignoring publicClient free error', e); }
-    try {
-      if (this.publicWallet) { try { (this.publicWallet as any).free?.(); } catch (e) { logger.debug('[ClientManager] publicWallet.free() failed', e); } }
-    } catch (e) { logger.debug('[ClientManager] ignoring publicWallet free error', e); }
-
-    // Clear internal state references to ensure deterministic init path
-    this.publicClient = null;
-    this.publicWallet = null;
-    this.publicSigner = null;
-    this.publicChainId = null;
-    this.publicAddress = null;
-
-    this.walletClient = null;
-    this.walletWallet = null;
-    this.walletSigner = previousWalletSigner ?? null; // keep signer for reconnect attempt
-    this.walletChainId = null;
-    this.walletAddress = null;
-
-    this.mode = ClientMode.UNINITIALIZED;
-    this.notifyStateChange();
-
-    // 3) (Re)load linera module and init WASM
-    try {
-      // Reload module to get a fresh vm if possible
-      this.lineraModule = await this.loadLinera();
-      const { default: init } = this.lineraModule as LineraModule;
-
-      // init() may itself throw if the wasm is unhealthy; wrap it
-      await init();
-    } catch (initErr) {
-      logger.error('[ClientManager] reinit(): wasm init failed', initErr);
-      // fallback to full reload of the page as last resort
-      try {
-        logger.info('[ClientManager] reinit(): falling back to window.location.reload()');
-        window.location.reload();
-        return;
-      } catch {
-        throw initErr;
-      }
-    }
-
-    // 4) Recreate public chain resources by calling initializeReadOnly()
-    try {
-      await this.initializeReadOnly();
-    } catch (initReadOnlyErr) {
-      logger.error('[ClientManager] reinit(): initializeReadOnly() failed', initReadOnlyErr);
-      // hard reload as fallback
-      try {
-        window.location.reload();
-        return;
-      } catch {
-        throw initReadOnlyErr;
-      }
-    }
-
-    // 5) If we previously had a wallet signer, try to reconnect it (best-effort)
-    if (hadWallet && previousWalletSigner) {
-      try {
-        await this.connectWallet(previousWalletSigner);
-      } catch (walletErr) {
-        // Keep public client running; notify listeners about partial failure.
-        logger.warn('[ClientManager] reinit(): reconnecting wallet failed (public client active)', walletErr);
-        this.notifyStateChange({ error: walletErr instanceof Error ? walletErr : new Error(String(walletErr)) });
-      }
-    }
-
-    // Final state notification
-    this.notifyStateChange();
-    logger.info('[ClientManager] reinit(): completed successfully (or recovered to public client)');
   }
 
 
@@ -727,7 +620,7 @@ export class LineraClientManager implements ILineraClientManager {
 
   /**
    * Clear all caches
-   * Called on destroy and reinit
+   * Called on destroy
    */
   private clearAllCaches(): void {
     logger.debug('[ClientManager] Clearing all caches');

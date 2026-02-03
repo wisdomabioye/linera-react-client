@@ -8,42 +8,11 @@
 
 import { useEffect, useState } from 'react';
 import { createLineraClient } from '../lib/linera';
-import type { ReadOnlyWalletConfig } from '../lib/linera/types';
+import type { ClientConfig } from '../lib/linera/types';
 import { createLogger, logger, type LoggerConfig } from '../utils/logger';
 
-export interface LineraProviderProps {
+export interface LineraProviderProps extends ClientConfig {
   children: React.ReactNode;
-
-  /** Linera faucet endpoint URL */
-  faucetUrl: string;
-
-  /** Network environment */
-  network?: 'mainnet' | 'testnet' | 'local';
-
-  /** Whether to automatically connect MetaMask on init */
-  autoConnect?: boolean;
-
-  /** Skip processing inbox on client creation */
-  skipProcessInbox?: boolean;
-
-  /**
-   * Read-only wallet configuration
-   * Controls how temporary wallets are created for guest/read-only mode
-   *
-   * @example
-   * // Use constant address (recommended - most efficient)
-   * readOnlyWallet={{
-   *   constantAddress: "0x0000000000000000000000000000000000000000"
-   * }}
-   *
-   * @example
-   * // Persist in localStorage
-   * readOnlyWallet={{
-   *   storage: 'localStorage'
-   * }}
-   */
-  readOnlyWallet?: ReadOnlyWalletConfig;
-
   /**
    * Logging configuration
    *
@@ -136,15 +105,11 @@ export interface LineraProviderProps {
  */
 export function LineraProvider({
   children,
-  faucetUrl,
-  network = 'testnet',
-  autoConnect = false,
-  skipProcessInbox,
-  readOnlyWallet,
   logging,
   fallback,
   errorFallback,
   immediate = false,
+  ...clientConfig
 }: LineraProviderProps) {
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -167,13 +132,7 @@ export function LineraProvider({
         logger.info('Initializing client...');
 
         // Create client manager
-        const clientManager = createLineraClient({
-          faucetUrl,
-          network,
-          autoConnect,
-          skipProcessInbox,
-          readOnlyWallet,
-        });
+        const clientManager = createLineraClient(clientConfig);
 
         // Initialize in read-only mode
         await clientManager.initializeReadOnly();
@@ -188,7 +147,7 @@ export function LineraProvider({
     };
 
     initClient();
-  }, [faucetUrl, network, autoConnect, skipProcessInbox, readOnlyWallet]);
+  }, [clientConfig]);
 
   // Immediate mode: render children immediately (advanced users only)
   if (immediate) {

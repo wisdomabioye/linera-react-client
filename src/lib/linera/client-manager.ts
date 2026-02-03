@@ -159,7 +159,7 @@ export class LineraClientManager implements ILineraClientManager {
         this.publicWallet,
         this.publicSigner,
         {
-          skipProcessInbox: this.config.skipProcessInbox || false
+          ...this.config.init
         }
       );
       this.publicClient = await Promise.resolve(clientInstance);
@@ -251,7 +251,7 @@ export class LineraClientManager implements ILineraClientManager {
         this.walletWallet as Wallet,
         this.walletSigner,
         {
-          skipProcessInbox: this.config.skipProcessInbox || false
+          ...this.config.init
         }
       );
       this.walletClient = await Promise.resolve(clientInstance);
@@ -374,7 +374,6 @@ export class LineraClientManager implements ILineraClientManager {
         publicApp,
         walletApp,
         this.mode === ClientMode.FULL,
-        this.config.faucetUrl,
         this.publicChainId,
         this.walletChainId || undefined,
         this.walletAddress || undefined,

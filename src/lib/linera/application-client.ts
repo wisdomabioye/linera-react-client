@@ -28,8 +28,6 @@ export class ApplicationClientImpl implements ApplicationClient {
 
   private publicApp: Application;
   private walletApp?: Application;
-  private canWriteWithWallet: boolean;
-  private faucetUrl: string;
   private publicChainId?: string;
   private walletChainId?: string;
   private walletAddress?: string;
@@ -40,7 +38,6 @@ export class ApplicationClientImpl implements ApplicationClient {
     publicApp: Application,
     walletApp: Application | undefined,
     canWriteWithWallet: boolean,
-    faucetUrl: string,
     publicChainId?: string,
     walletChainId?: string,
     walletAddress?: string,
@@ -49,8 +46,6 @@ export class ApplicationClientImpl implements ApplicationClient {
     this.appId = appId;
     this.publicApp = publicApp;
     this.walletApp = walletApp;
-    this.canWriteWithWallet = canWriteWithWallet;
-    this.faucetUrl = faucetUrl;
     this.publicChainId = publicChainId;
     this.walletChainId = walletChainId;
     this.walletAddress = walletAddress;

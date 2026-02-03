@@ -4,7 +4,7 @@
  * Core type definitions for Linera client management
  */
 
-import type { Client, Wallet, Signer, Application, Chain, Faucet, QueryOptions, initialize } from '@linera/client';
+import type { Client, Wallet, Signer, Application, Chain, Faucet, QueryOptions, initialize, Options as ClientOptions} from '@linera/client';
 
 /**
  * Client operational modes
@@ -114,15 +114,36 @@ export interface ClientConfig {
 
   /** Whether to automatically connect MetaMask on init */
   autoConnect?: boolean;
-
-  /** Skip processing inbox on client creation */
-  skipProcessInbox?: boolean;
-
+  
   /**
    * Read-only wallet configuration
    * Controls how temporary wallets are created for guest/read-only mode
+   * 
+   * In Provider:
+   * 
+   *
+   * Read-only wallet configuration
+   * Controls how temporary wallets are created for guest/read-only mode
+   *
+   * @example
+   * // Use constant address (recommended - most efficient)
+   * readOnlyWallet={{
+   *   constantAddress: "0x0000000000000000000000000000000000000000"
+   * }}
+   *
+   * @example
+   * // Persist in localStorage
+   * readOnlyWallet={{
+   *   storage: 'localStorage'
+   * }}
    */
   readOnlyWallet?: ReadOnlyWalletConfig;
+
+  /**
+   * @linera/client config 
+   * this is passed directly to the client init function
+   */
+  init: ClientOptions
 }
 
 /**
@@ -251,7 +272,7 @@ export interface ILineraClientManager {
   /**
    * reinitialize client, useful when 'runtime' error occur
    */
-  reinit(): Promise<void>;
+  // reinit(): Promise<void>;
 }
 
 /**
